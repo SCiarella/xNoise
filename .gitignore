@@ -1,4 +1,111 @@
-TRASH/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Project specific
 data/
+!data/.gitkeep
 model_checkpoint/
+!model_checkpoint/.gitkeep
+images/
+!images/.gitkeep
+TRASH/
+*.pth
+*.ckpt
+*.pt
+
+# CSV files with CLIP encodings (can be large)
 clip.csv
+*.csv
+
+# Generated images and animations
+*.gif
+*.png
+*.jpg
+*.jpeg
+!images/DLI_Header.png
+
+# Logs
+*.log
+logs/
+wandb/
+
+# Temporary files
+*.tmp
+*.temp
+*~

@@ -1,0 +1,45 @@
+# Default configuration for DDPM-CLIP training
+
+# Model parameters
+model:
+  img_size: 32
+  img_channels: 3
+  down_channels: [256, 256, 512]
+  t_embed_dim: 8
+  c_embed_dim: 512  # CLIP embedding size
+
+# Diffusion parameters
+diffusion:
+  timesteps: 400
+  beta_start: 0.0001
+  beta_end: 0.02
+
+# Training parameters
+training:
+  epochs: 10
+  batch_size: 16
+  learning_rate: 0.0001
+  c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
+  save_frequency: 5  # Save checkpoint every N epochs
+  
+# Data parameters
+data:
+  dataset_root: "data/tiny-imagenet-200"
+  use_train: true
+  use_val: false
+  max_samples: 10000  # Set to null to use all images
+  preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
+  clip_csv_path: "clip.csv"
+  
+# CLIP parameters
+clip:
+  model_name: "ViT-B/32"
+  features: 512
+
+# Paths
+paths:
+  save_dir: "images/"
+  checkpoint_dir: "model_checkpoint/"
+  
+# Device
+device: "cuda"  # or "cpu"

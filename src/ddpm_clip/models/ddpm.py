@@ -5,7 +5,7 @@ import torchvision.transforms as transforms
 import numpy as np
 import clip
 
-from utils import other_utils
+from ..utils.visualization import show_tensor_image, to_image
 
 
 class DDPM:
@@ -172,7 +172,7 @@ class DDPM:
                 ax = plt.subplot(1, ncols+1, plot_number)
                 if not axis_on:
                     ax.axis('off')
-                other_utils.show_tensor_image(x_t.detach().cpu())
+                show_tensor_image(x_t.detach().cpu())
                 plot_number += 1
         plt.show()
 
@@ -257,7 +257,7 @@ def visualize_diffusion_process(
     plt.subplots_adjust(wspace=0.05, hspace=0.1)
     
     # Column headers
-    col_titles = ['Diffusion Step', 'Added Noise', 'Top CLIP Match (Noise)', 'Top CLIP Match (Image)']
+    col_titles = ['Diffusion Step', 'Top CLIP Match (Image)', 'Added Noise', 'Top CLIP Match (Noise)']
     for i, title in enumerate(col_titles):
         axes[0, i].set_title(title, fontsize=14, fontweight='bold')
     
@@ -307,52 +307,15 @@ def visualize_diffusion_process(
         
         # Column 1: Show the noisy image
         # Convert tensor to displayable format using your existing to_image function
-        img_pil = other_utils.to_image(stored_images[idx].detach().cpu())
+        img_pil = to_image(stored_images[idx].detach().cpu())
         axes[idx, 0].imshow(img_pil)
         axes[idx, 0].set_ylabel(f't={t_val}', fontsize=12)
         axes[idx, 0].axis('off')
         
-        # Column 2: Show the noise that was added
-        # Normalize noise for visualization (convert from [-1,1] to [0,1])
-        noise_vis = stored_noises[idx]
-        if noise_vis.shape[0] == 3:  # RGB
-            axes[idx, 1].imshow(noise_vis.permute(1, 2, 0).cpu().numpy())
-        else:  # Grayscale
-            axes[idx, 1].imshow(noise_vis[0].cpu().numpy(), cmap='gray')
-        axes[idx, 1].axis('off')
-        
-        # Column 3: CLIP interpretation of the noise
-        try:
-            # Process noise for CLIP using your existing to_image function
-            noise_pil = other_utils.to_image(noise_vis)
-            noise_clip_input = torch.tensor(np.stack([clip_preprocess(noise_pil)])).to(device)
-            noise_embedding = clip_model.encode_image(noise_clip_input).float()
-            noise_embedding /= noise_embedding.norm(dim=-1, keepdim=True)
-            
-            # Find top_k matches for noise
-            noise_similarities = (text_embeddings * noise_embedding).sum(-1)
-            top_noise_values, top_noise_indices = noise_similarities.topk(top_k)
-            
-            # Create text showing top_k matches
-            noise_matches = []
-            for i in range(top_k):
-                label = cifar100_labels[top_noise_indices[i].item()]
-                score = top_noise_values[i].item()
-                noise_matches.append(f"{label}: {score:.2f}")
-            noise_text = "\n".join(noise_matches)
-            
-            axes[idx, 2].text(0.5, 0.5, noise_text, 
-                            ha='center', va='center', transform=axes[idx, 2].transAxes,
-                            fontsize=8, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
-        except Exception as e:
-            axes[idx, 2].text(0.5, 0.5, f"Noise CLIP\nanalysis failed", 
-                            ha='center', va='center', transform=axes[idx, 2].transAxes, fontsize=8)
-        axes[idx, 2].axis('off')
-        
-        # Column 4: CLIP interpretation of the noisy image
+        # Column 2: CLIP interpretation of the noisy image
         try:
             # Process noisy image for CLIP using your existing to_image function
-            image_pil = other_utils.to_image(stored_images[idx][0].detach().cpu())
+            image_pil = to_image(stored_images[idx].detach().cpu())
             image_clip_input = torch.tensor(np.stack([clip_preprocess(image_pil)])).to(device)
             image_embedding = clip_model.encode_image(image_clip_input).float()
             image_embedding /= image_embedding.norm(dim=-1, keepdim=True)
@@ -369,11 +332,48 @@ def visualize_diffusion_process(
                 image_matches.append(f"{label}: {score:.2f}")
             image_text = "\n".join(image_matches)
             
-            axes[idx, 3].text(0.5, 0.5, image_text, 
-                            ha='center', va='center', transform=axes[idx, 3].transAxes,
+            axes[idx, 1].text(0.5, 0.5, image_text, 
+                            ha='center', va='center', transform=axes[idx, 1].transAxes,
                             fontsize=8, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8))
         except Exception as e:
-            axes[idx, 3].text(0.5, 0.5, f"Image CLIP\nanalysis failed", 
+            axes[idx, 1].text(0.5, 0.5, f"Image CLIP\nanalysis failed", 
+                            ha='center', va='center', transform=axes[idx, 1].transAxes, fontsize=8)
+        axes[idx, 1].axis('off')
+        
+        # Column 3: Show the noise that was added
+        # Normalize noise for visualization (convert from [-1,1] to [0,1])
+        noise_vis = stored_noises[idx]
+        if noise_vis.shape[0] == 3:  # RGB
+            axes[idx, 2].imshow(noise_vis.permute(1, 2, 0).cpu().numpy())
+        else:  # Grayscale
+            axes[idx, 2].imshow(noise_vis[0].cpu().numpy(), cmap='gray')
+        axes[idx, 2].axis('off')
+        
+        # Column 4: CLIP interpretation of the noise
+        try:
+            # Process noise for CLIP using your existing to_image function
+            noise_pil = to_image(noise_vis)
+            noise_clip_input = torch.tensor(np.stack([clip_preprocess(noise_pil)])).to(device)
+            noise_embedding = clip_model.encode_image(noise_clip_input).float()
+            noise_embedding /= noise_embedding.norm(dim=-1, keepdim=True)
+            
+            # Find top_k matches for noise
+            noise_similarities = (text_embeddings * noise_embedding).sum(-1)
+            top_noise_values, top_noise_indices = noise_similarities.topk(top_k)
+            
+            # Create text showing top_k matches
+            noise_matches = []
+            for i in range(top_k):
+                label = cifar100_labels[top_noise_indices[i].item()]
+                score = top_noise_values[i].item()
+                noise_matches.append(f"{label}: {score:.2f}")
+            noise_text = "\n".join(noise_matches)
+            
+            axes[idx, 3].text(0.5, 0.5, noise_text, 
+                            ha='center', va='center', transform=axes[idx, 3].transAxes,
+                            fontsize=8, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
+        except Exception as e:
+            axes[idx, 3].text(0.5, 0.5, f"Noise CLIP\nanalysis failed", 
                             ha='center', va='center', transform=axes[idx, 3].transAxes, fontsize=8)
         axes[idx, 3].axis('off')
     
