@@ -5,6 +5,9 @@ import numpy as np
 import clip
 
 from ..utils.visualization import generation_image, to_image
+from ..utils.vocabularies import (_get_tiny_imagenet_labels,
+                                  _get_cifar100_labels, _get_imagenet1k_labels,
+                                  _get_openai_imagenet_labels)
 
 
 class DDPM:
@@ -206,7 +209,8 @@ def visualize_diffusion_process(ddpm,
                                 timesteps_to_show=None,
                                 prompt='A cute cat',
                                 w=0.5,
-                                top_k=5):
+                                top_k=5,
+                                vocabulary='imagenet1k'):
     """
     Visualize the diffusion process and compute CLIP similarities.
 
@@ -236,31 +240,29 @@ def visualize_diffusion_process(ddpm,
         Guidance weight for classifier-free guidance, by default 0.5.
     top_k : int, optional
         Number of top similar images to display, by default 5.
+    vocabulary : str, optional
+        Which vocabulary to use: 'cifar100', 'tinyimagenet', 'imagenet1k', or 'openai_imagenet'
+        by default 'imagenet1k'.
 
     Returns
     -------
     None
         Displays matplotlib figures.
     """
-    # CIFAR-100 class names as our vocabulary
-    cifar100_labels = [
-        'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee',
-        'beetle', 'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus',
-        'butterfly', 'camel', 'can', 'castle', 'caterpillar', 'cattle',
-        'chair', 'chimpanzee', 'clock', 'cloud', 'cockroach', 'couch', 'crab',
-        'crocodile', 'cup', 'dinosaur', 'dolphin', 'elephant', 'flatfish',
-        'forest', 'fox', 'girl', 'hamster', 'house', 'kangaroo', 'keyboard',
-        'lamp', 'lawn_mower', 'leopard', 'lion', 'lizard', 'lobster', 'man',
-        'maple_tree', 'motorcycle', 'mountain', 'mouse', 'mushroom',
-        'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
-        'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
-        'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose', 'sea',
-        'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
-        'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper',
-        'table', 'tank', 'telephone', 'television', 'tiger', 'tractor',
-        'train', 'trout', 'tulip', 'turtle', 'wardrobe', 'whale',
-        'willow_tree', 'wolf', 'woman', 'worm'
-    ]
+    # Select vocabulary based on parameter
+    if vocabulary == 'cifar100':
+        labels = _get_cifar100_labels()
+    elif vocabulary == 'tinyimagenet':
+        # Tiny ImageNet 200 classes - these are the actual class names
+        labels = _get_tiny_imagenet_labels()
+    elif vocabulary == 'imagenet1k':
+        # Full ImageNet-1k vocabulary (1000 classes)
+        labels = _get_imagenet1k_labels()
+    elif vocabulary == 'openai_imagenet':
+        # OpenAI's curated ImageNet labels (cleaner names)
+        labels = _get_openai_imagenet_labels()
+    else:
+        raise ValueError(f"Unknown vocabulary: {vocabulary}")
 
     if timesteps_to_show is None:
         # Show 8 evenly spaced timesteps from 0 to T-1 (clean to noisy)
@@ -269,38 +271,46 @@ def visualize_diffusion_process(ddpm,
 
     n_steps = len(timesteps_to_show)
 
-    # Prepare text embeddings for comparison - use clip.tokenize, not clip_model.tokenize
-    text_tokens = clip.tokenize(cifar100_labels).to(device)
+    # Prepare text embeddings for comparison
+    text_tokens = clip.tokenize(labels).to(device)
     text_embeddings = clip_model.encode_text(text_tokens).float()
     text_embeddings /= text_embeddings.norm(dim=-1, keepdim=True)
 
     # Create figure with subplots
-    fig, axes = plt.subplots(n_steps, 4, figsize=(12, n_steps * 2))
+    fig, axes = plt.subplots(n_steps, 8, figsize=(22, n_steps * 2))
     if n_steps == 1:
         axes = axes.reshape(1, -1)
 
     # Adjust spacing between subplots
-    plt.subplots_adjust(wspace=0.05, hspace=0.1)
+    plt.subplots_adjust(wspace=0.025, hspace=0.05)
 
     # Column headers
     col_titles = [
-        'Diffusion Step', 'Top CLIP Match (Image)', 'Added Noise',
-        'Top CLIP Match (Noise)'
+        'Diffusion Step', 'Top CLIP Match (Image)', 'Conditioned Noise',
+        'Top CLIP Match (Cond. Noise)', 'Unconditioned Noise',
+        'Top CLIP Match (Uncond. Noise)', 'Noise Difference',
+        'Top CLIP Match (Diff.)'
     ]
     for i, title in enumerate(col_titles):
-        axes[0, i].set_title(title, fontsize=14, fontweight='bold')
+        axes[0, i].set_title(title, fontsize=12, fontweight='bold')
 
     stored_images = []
     stored_noises = []
+    stored_uncond_noises = []
 
     n_samples = 1
+
+    # Font size for CLIP interpretation text (easy to tune)
+    clip_text_fontsize = 10
 
     # Embed conditioning text
     text_tokens = clip.tokenize(prompt).to(device)
     c = clip_model.encode_text(text_tokens).float()
+    # Double it (for unconditioned version)
+    c = c.repeat(2, 1)
 
     # Don't drop context for generation
-    c_mask = torch.ones(embed_size).to(device)
+    c_mask = torch.ones_like(c).to(device)
     c_mask[n_samples:] = 0.0
 
     # **** Reverse diffusion process to generate the image
@@ -329,7 +339,9 @@ def visualize_diffusion_process(ddpm,
             # Store the (first) image at this timestep
             stored_images.append(x_t[0].clone())
             # Store the (first) predicted noise at this timestep
-            stored_noises.append(e_t[0].clone())
+            stored_noises.append(e_t_keep_c[0].clone())
+            # Also store unconditioned versions for comparison
+            stored_uncond_noises.append(e_t_drop_c[0].clone())
 
     for idx, t_val in enumerate(timesteps_to_show):
         t = torch.tensor([t_val], device=device).float()
@@ -358,7 +370,7 @@ def visualize_diffusion_process(ddpm,
             # Create text showing top_k matches
             image_matches = []
             for i in range(top_k):
-                label = cifar100_labels[top_image_indices[i].item()]
+                label = labels[top_image_indices[i].item()]
                 score = top_image_values[i].item()
                 image_matches.append(f"{label}: {score:.2f}")
             image_text = '\n'.join(image_matches)
@@ -369,7 +381,7 @@ def visualize_diffusion_process(ddpm,
                               ha='center',
                               va='center',
                               transform=axes[idx, 1].transAxes,
-                              fontsize=8,
+                              fontsize=clip_text_fontsize,
                               bbox=dict(boxstyle='round,pad=0.3',
                                         facecolor='lightgreen',
                                         alpha=0.8))
@@ -380,11 +392,10 @@ def visualize_diffusion_process(ddpm,
                               ha='center',
                               va='center',
                               transform=axes[idx, 1].transAxes,
-                              fontsize=8)
+                              fontsize=clip_text_fontsize)
         axes[idx, 1].axis('off')
 
-        # Column 3: Show the noise that was added
-        # Normalize noise for visualization (convert from [-1,1] to [0,1])
+        # Column 3: Show the conditioned noise
         noise_vis = stored_noises[idx]
         if noise_vis.shape[0] == 3:  # RGB
             axes[idx, 2].imshow(noise_vis.permute(1, 2, 0).cpu().numpy())
@@ -392,7 +403,7 @@ def visualize_diffusion_process(ddpm,
             axes[idx, 2].imshow(noise_vis[0].cpu().numpy(), cmap='gray')
         axes[idx, 2].axis('off')
 
-        # Column 4: CLIP interpretation of the noise
+        # Column 4: CLIP interpretation of the conditioned noise
         try:
             # Process noise for CLIP using your existing to_image function
             noise_pil = to_image(noise_vis)
@@ -409,7 +420,7 @@ def visualize_diffusion_process(ddpm,
             # Create text showing top_k matches
             noise_matches = []
             for i in range(top_k):
-                label = cifar100_labels[top_noise_indices[i].item()]
+                label = labels[top_noise_indices[i].item()]
                 score = top_noise_values[i].item()
                 noise_matches.append(f"{label}: {score:.2f}")
             noise_text = '\n'.join(noise_matches)
@@ -420,7 +431,7 @@ def visualize_diffusion_process(ddpm,
                               ha='center',
                               va='center',
                               transform=axes[idx, 3].transAxes,
-                              fontsize=8,
+                              fontsize=clip_text_fontsize,
                               bbox=dict(boxstyle='round,pad=0.3',
                                         facecolor='lightblue',
                                         alpha=0.8))
@@ -431,8 +442,117 @@ def visualize_diffusion_process(ddpm,
                               ha='center',
                               va='center',
                               transform=axes[idx, 3].transAxes,
-                              fontsize=8)
+                              fontsize=clip_text_fontsize)
         axes[idx, 3].axis('off')
+
+        # Column 5: Show the unconditioned noise
+        uncond_noise_vis = stored_uncond_noises[idx]
+        if uncond_noise_vis.shape[0] == 3:  # RGB
+            axes[idx,
+                 4].imshow(uncond_noise_vis.permute(1, 2, 0).cpu().numpy())
+        else:  # Grayscale
+            axes[idx, 4].imshow(uncond_noise_vis[0].cpu().numpy(), cmap='gray')
+        axes[idx, 4].axis('off')
+
+        # Column 6: CLIP interpretation of the unconditioned noise
+        try:
+            # Process unconditioned noise for CLIP
+            uncond_noise_pil = to_image(uncond_noise_vis)
+            uncond_noise_clip_input = torch.tensor(
+                np.stack([clip_preprocess(uncond_noise_pil)])).to(device)
+            uncond_noise_embedding = clip_model.encode_image(
+                uncond_noise_clip_input).float()
+            uncond_noise_embedding /= uncond_noise_embedding.norm(dim=-1,
+                                                                  keepdim=True)
+
+            # Find top_k matches for unconditioned noise
+            uncond_noise_similarities = (text_embeddings *
+                                         uncond_noise_embedding).sum(-1)
+            top_uncond_noise_values, top_uncond_noise_indices = uncond_noise_similarities.topk(
+                top_k)
+
+            # Create text showing top_k matches
+            uncond_noise_matches = []
+            for i in range(top_k):
+                label = labels[top_uncond_noise_indices[i].item()]
+                score = top_uncond_noise_values[i].item()
+                uncond_noise_matches.append(f"{label}: {score:.2f}")
+            uncond_noise_text = '\n'.join(uncond_noise_matches)
+
+            axes[idx, 5].text(0.5,
+                              0.5,
+                              uncond_noise_text,
+                              ha='center',
+                              va='center',
+                              transform=axes[idx, 5].transAxes,
+                              fontsize=clip_text_fontsize,
+                              bbox=dict(boxstyle='round,pad=0.3',
+                                        facecolor='lightyellow',
+                                        alpha=0.8))
+        except Exception:
+            axes[idx, 5].text(0.5,
+                              0.5,
+                              'Uncond. Noise CLIP\nanalysis failed',
+                              ha='center',
+                              va='center',
+                              transform=axes[idx, 5].transAxes,
+                              fontsize=clip_text_fontsize)
+        axes[idx, 5].axis('off')
+
+        # Column 7: Show the difference between conditioned and unconditioned noise
+        noise_diff = stored_noises[idx] - stored_uncond_noises[idx]
+        if noise_diff.shape[0] == 3:  # RGB
+            # Enhance visibility by normalizing to full range
+            diff_vis = (noise_diff - noise_diff.min()) / (
+                noise_diff.max() - noise_diff.min() + 1e-8)
+            axes[idx, 6].imshow(diff_vis.permute(1, 2, 0).cpu().numpy())
+        else:  # Grayscale
+            axes[idx, 6].imshow(noise_diff[0].cpu().numpy(),
+                                cmap='seismic',
+                                vmin=noise_diff.min(),
+                                vmax=noise_diff.max())
+        axes[idx, 6].axis('off')
+
+        # Column 8: CLIP interpretation of the noise difference
+        try:
+            # Process noise difference for CLIP
+            diff_pil = to_image(noise_diff)
+            diff_clip_input = torch.tensor(
+                np.stack([clip_preprocess(diff_pil)])).to(device)
+            diff_embedding = clip_model.encode_image(diff_clip_input).float()
+            diff_embedding /= diff_embedding.norm(dim=-1, keepdim=True)
+
+            # Find top_k matches for noise difference
+            diff_similarities = (text_embeddings * diff_embedding).sum(-1)
+            top_diff_values, top_diff_indices = diff_similarities.topk(top_k)
+
+            # Create text showing top_k matches
+            diff_matches = []
+            for i in range(top_k):
+                label = labels[top_diff_indices[i].item()]
+                score = top_diff_values[i].item()
+                diff_matches.append(f"{label}: {score:.2f}")
+            diff_text = '\n'.join(diff_matches)
+
+            axes[idx, 7].text(0.5,
+                              0.5,
+                              diff_text,
+                              ha='center',
+                              va='center',
+                              transform=axes[idx, 7].transAxes,
+                              fontsize=clip_text_fontsize,
+                              bbox=dict(boxstyle='round,pad=0.3',
+                                        facecolor='lightcoral',
+                                        alpha=0.8))
+        except Exception:
+            axes[idx, 7].text(0.5,
+                              0.5,
+                              'Diff CLIP\nanalysis failed',
+                              ha='center',
+                              va='center',
+                              transform=axes[idx, 7].transAxes,
+                              fontsize=clip_text_fontsize)
+        axes[idx, 7].axis('off')
 
     plt.suptitle(
         f"DDPM process + CLIP conditioning:'{prompt}' with weight {w}",

@@ -1,307 +1,149 @@
-# CLIP-Guided DDPM for Text-to-Image Generation
+# Understanding Noise in Text-to-Image Generation
 
-A PyTorch implementation of Denoising Diffusion Probabilistic Models (DDPM) guided by CLIP embeddings for text-to-image generation. This project demonstrates how to use CLIP encodings to condition a diffusion model without requiring explicit text descriptions for each training image.
+A PyTorch implementation of CLIP-guided Denoising Diffusion Probabilistic Models (DDPM) with emphasis on **interpretability**. This project explores how diffusion models learn to encode semantic information in noise patterns.
 
-## Overview
+## 🎯 Key Features
 
-This project implements a text-to-image generation system using:
-- **DDPM (Denoising Diffusion Probabilistic Models)**: A generative model that learns to denoise images through a reverse diffusion process
-- **CLIP (Contrastive Language-Image Pre-Training)**: Used to align text and image embeddings, enabling text-guided generation
-- **UNet Architecture**: A neural network with skip connections for learning the denoising process
+- **Explainability First**: Analyze and visualize how noise encodes semantic content
+- **Timestep Attribution**: Identify which denoising steps are most critical
+- **Guidance Visualization**: Quantify the effect of text conditioning on generation
+- **Process Transparency**: Animations and analysis tools to understand the "black box"
 
-The key insight is that we can train a diffusion model using only image CLIP encodings (without text descriptions) and still generate images from text prompts at inference time.
+## 🔬 Core Concepts
 
-## Features
+**Diffusion Models** learn to predict noise rather than generate pixels directly. By understanding noise patterns, they can reverse the corruption process—transforming pure noise into images.
 
-- ✨ Text-to-image generation using natural language prompts
-- 🎨 CLIP-guided diffusion for semantic control
-- 🔧 Modular architecture with reusable components
-- 📊 Visualization tools for the diffusion process
-- 💾 Training checkpoint management
-- 🎬 Animation generation for the denoising process
-- 📈 Classifier-free guidance with configurable strength
+**CLIP** aligns text and images in a shared embedding space, enabling text-guided generation without requiring text captions in training data.
 
-## Project Structure
+**Classifier-Free Guidance** amplifies semantic control via:
+$$\tilde{\epsilon}_\theta(x_t, c) = (1 + w) \cdot \epsilon_\theta(x_t, c) - w \cdot \epsilon_\theta(x_t, \emptyset)$$
 
-```
-.
-├── README.md                    # Project documentation
-├── requirements.txt             # Python dependencies
-├── .gitignore                  # Git ignore rules
-├── LICENSE                     # Project license
-├── setup.py                    # Package installation configuration
-│
-├── src/                        # Source code
-│   └── ddpm_clip/  
-│       ├── __init__.py
-│       ├── models/            # Model architectures
-│       │   ├── __init__.py
-│       │   ├── unet.py       # UNet implementation
-│       │   └── ddpm.py       # DDPM core logic
-│       ├── data/             # Dataset utilities
-│       │   ├── __init__.py
-│       │   └── dataset.py    # Custom dataset classes
-│       └── utils/            # Utility functions
-│           ├── __init__.py
-│           ├── visualization.py
-│           └── training.py
-│
-├── scripts/                   # Training and inference scripts
-│   ├── train.py              # Training script
-│   ├── generate.py           # Image generation script
-│   └── preprocess_clip.py    # CLIP encoding preprocessing
-│
-├── config/                   # Configuration files
-│   ├── default.yaml         # Default hyperparameters
-│   └── example.yaml         # Example configuration
-│
-├── examples/                 # Example notebooks and demos
-│   └── test.ipynb           # Main demonstration notebook
-│
-├── data/                    # Dataset directory (not tracked)
-│   └── tiny-imagenet-200/
-│
-├── model_checkpoint/        # Model checkpoints (not tracked)
-├── images/                  # Generated images (not tracked)
-└── TRASH/                   # Temporary files (not tracked)
-```
+This allows us to visualize how text changes noise prediction and tune guidance strength.
 
-## Installation
+## 📚 Complete Tutorial
 
-### Prerequisites
-- Python 3.8+
-- CUDA-capable GPU (recommended)
-- 8GB+ GPU memory
+👉 **Start here: [examples/test.ipynb](examples/test.ipynb)**
 
-### Setup
+The notebook provides comprehensive coverage of:
+- Theoretical foundations and mathematical background
+- Step-by-step implementation details
+- Training on Tiny ImageNet with CLIP conditioning
+- xAI analysis: noise patterns, denoising trajectories, and guidance effects
+- Visualizations and animations of the generation process
 
-1. Clone the repository:
+## 🚀 Quick Start
+
 ```bash
+# Clone and setup
 git clone https://github.com/yourusername/ddpm-clip.git
 cd ddpm-clip
-```
-
-2. Create a virtual environment:
-```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install the package (this will install all dependencies automatically):
-```bash
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -e .
-```
 
-Alternatively, you can install dependencies separately:
-```bash
-pip install -r requirements.txt
-pip install -e .
-```
-
-## Usage
-
-### Quick Start with Jupyter Notebook
-
-The easiest way to get started is with the provided Jupyter notebook:
-
-```bash
+# Launch interactive tutorial
 jupyter notebook examples/test.ipynb
 ```
 
-### Training from Scratch
-
-1. **Prepare your dataset**: Place images in `data/tiny-imagenet-200/` or modify the path in the config
-
-2. **Preprocess CLIP embeddings** (optional but recommended for faster training):
-```bash
-python scripts/preprocess_clip.py --data_dir data/tiny-imagenet-200/train --output clip.csv
-```
-
-3. **Train the model**:
-```bash
-python scripts/train.py --config config/default.yaml
-```
-
-### Generate Images
-
-Generate images from text prompts:
-
+**Generate images** (after training):
 ```bash
 python scripts/generate.py \
     --checkpoint model_checkpoint/9.pth \
-    --prompts "A fish" "A tree" "A baby" \
+    --prompts "A goldfish" "An oak tree" \
     --output images/generated.png
 ```
 
-### Python API
+## 🏗️ Project Structure
 
-```python
-import torch
-from ddpm_clip.models import UNet, DDPM
-import clip
-
-# Load models
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-clip_model, clip_preprocess = clip.load("ViT-B/32")
-
-# Initialize DDPM
-T = 400
-B = torch.linspace(0.0001, 0.02, T).to(device)
-ddpm = DDPM(B, device)
-
-# Initialize UNet
-model = UNet(T, img_ch=3, img_size=32, down_chs=(256, 256, 512),
-             t_embed_dim=8, c_embed_dim=512)
-model.load_state_dict(torch.load("model_checkpoint/9.pth")["model"])
-model.to(device).eval()
-
-# Generate images
-text_prompts = ["A fish swimming", "A beautiful tree"]
-text_tokens = clip.tokenize(text_prompts).to(device)
-text_embeddings = clip_model.encode_text(text_tokens).float()
-
-images = ddpm.sample(model, text_embeddings)
+```
+├── examples/test.ipynb       # 📓 Complete tutorial (START HERE)
+├── src/ddpm_clip/           # Core implementation
+│   ├── models/              # UNet and DDPM
+│   ├── data/                # Dataset utilities
+│   └── utils/               # Visualization tools
+├── scripts/                 # Training & inference scripts
+└── config/                  # Hyperparameter configs
 ```
 
-## Key Concepts
+## 🎨 Usage Examples
 
-### CLIP Encoding
-CLIP creates aligned embeddings for text and images in the same vector space. This allows the model to:
-- Learn from image embeddings during training
-- Generate images from text embeddings at inference time
-- No need for explicit text captions in the training data
+**Train your model:**
+```bash
+python scripts/preprocess_clip.py --data_dir data/tiny-imagenet-200/train
+python scripts/train.py --config config/default.yaml
+```
 
-### Classifier-Free Guidance
-The model supports classifier-free guidance, where we:
-- Train with random context dropout (`c_drop_prob`)
-- At inference, interpolate between conditional and unconditional predictions
-- Control guidance strength with parameter `w`
+**Analyze noise patterns:**
+```python
+from ddpm_clip.models import visualize_diffusion_process
 
-### Diffusion Process
-- **Forward process**: Gradually adds Gaussian noise to images over T timesteps
-- **Reverse process**: Model learns to denoise, generating images from pure noise
-- Uses a variance schedule (beta schedule) to control noise levels
+visualize_diffusion_process(
+    ddpm=ddpm, model=model, prompt="A tabby cat",
+    w=1, top_k=7  # Show 7 most critical timesteps
+)
+```
 
-## Configuration
+**Compare guidance strengths:**
+```python
+x_gen, x_gen_store = sample_tinyimg(
+    text_list=["A goldfish", "An oak tree"],
+    w_values=[-2, -1, 0, 1, 2]
+)
+```
 
-Key hyperparameters in `config/default.yaml`:
+## 🔍 xAI Insights
+
+Through analysis in the notebook, you'll discover:
+- Early timesteps establish global structure (composition, layout)
+- Middle timesteps define semantic content (object identity)
+- Late timesteps refine details (texture, edges)
+- Different prompts may require different guidance weights for optimal results
+
+## ⚙️ Key Configuration
 
 ```yaml
-# Model parameters
-img_size: 32
-img_channels: 3
-timesteps: 400
-beta_start: 0.0001
-beta_end: 0.02
-
-# Training parameters
-epochs: 10
+timesteps: 400              # Diffusion steps
 batch_size: 16
 learning_rate: 0.0001
-c_drop_prob: 0.1
-
-# UNet architecture
+c_drop_prob: 0.1           # Context dropout for classifier-free guidance
 down_channels: [256, 256, 512]
-t_embed_dim: 8
-c_embed_dim: 512
-
-# CLIP model
-clip_model: "ViT-B/32"
 ```
 
-## Dataset
+## 📊 Dataset
 
-This project uses [Tiny ImageNet](http://cs231n.stanford.edu/tiny-imagenet-200.zip), a subset of ImageNet with 200 classes and 500 training images per class (64x64 pixels).
+Uses [Tiny ImageNet](http://cs231n.stanford.edu/tiny-imagenet-200.zip): 200 classes, 500 images/class, 64×64 resolution.
 
-To use your own dataset:
-1. Organize images in a directory structure
-2. Update `data_paths` in the config or script
-3. Ensure images are in a format readable by PIL
+**Custom data**: Run `scripts/preprocess_clip.py` to extract CLIP embeddings from your images.
 
-## Training Details
+## 🐛 Common Issues
 
-- **Loss Function**: MSE between predicted and actual noise
-- **Optimizer**: Adam with learning rate 1e-4
-- **Data Augmentation**: Random crops and horizontal flips
-- **Context Dropout**: 10% during training for classifier-free guidance
-- **Checkpointing**: Model saved every 5 epochs
+| Issue | Solution |
+|-------|----------|
+| CUDA OOM | Reduce `batch_size` or `img_size` |
+| Poor quality | Train longer, increase data, adjust `w` |
+| Slow training | Use preprocessed CLIP embeddings |
 
-## Results
+## 🎓 Key References
 
-The model learns to generate images conditioned on text prompts. Example generations:
+- [DDPM (Ho et al., 2020)](https://arxiv.org/abs/2006.11239) - Foundational diffusion paper
+- [CLIP (Radford et al., 2021)](https://arxiv.org/abs/2103.00020) - Vision-language alignment
+- [Classifier-Free Guidance (Ho & Salimans, 2022)](https://arxiv.org/abs/2207.12598) - Guidance technique
 
-- "A fish" → Fish-like shapes and textures
-- "A tree" → Tree structures and foliage patterns
-- "A baby" → Face-like features
-
-Note: Results depend on training data diversity and training duration.
-
-## Visualization
-
-The project includes tools to visualize:
-- Generated images from text prompts
-- The denoising process as an animated GIF
-- CLIP embedding similarities between text and images
-- Training loss over time
-
-## Performance Tips
-
-- **GPU Memory**: Reduce `batch_size` if you encounter OOM errors
-- **Training Speed**: Preprocess CLIP embeddings to CSV for faster training
-- **Quality**: Train for more epochs and with more diverse data
-- **Generation**: Adjust classifier-free guidance strength `w` for different effects
-
-## Troubleshooting
-
-**Issue**: CUDA out of memory
-- Solution: Reduce `batch_size` or `img_size`
-
-**Issue**: Poor generation quality
-- Solution: Train longer, use more training data, adjust learning rate
-
-**Issue**: Slow training
-- Solution: Use preprocessed CLIP embeddings, enable mixed precision training
-
-## Citation
-
-If you use this code in your research, please cite:
+## 📄 Citation
 
 ```bibtex
 @article{ho2020denoising,
   title={Denoising Diffusion Probabilistic Models},
   author={Ho, Jonathan and Jain, Ajay and Abbeel, Pieter},
-  journal={Advances in Neural Information Processing Systems},
-  volume={33},
+  journal={NeurIPS},
   year={2020}
-}
-
-@article{radford2021learning,
-  title={Learning Transferable Visual Models From Natural Language Supervision},
-  author={Radford, Alec and Kim, Jong Wook and Hallacy, Chris and others},
-  journal={International Conference on Machine Learning},
-  year={2021}
 }
 ```
 
-## Contributing
+## 📜 License
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Original DDPM paper by Ho et al.
-- CLIP by OpenAI
-- Inspired by Stable Diffusion and DALL-E architectures
-- Built with PyTorch and various open-source libraries
-
-## Contact
-
-For questions or issues, please open an issue on GitHub.
+MIT License - see [LICENSE](LICENSE)
 
 ---
 
-**Note**: This is a research/educational project. Generated images may not always match text descriptions perfectly, especially with limited training data.
+**📓 For theory, implementation details, and xAI analysis, see [examples/test.ipynb](examples/test.ipynb)**
