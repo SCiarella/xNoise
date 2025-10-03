@@ -9,6 +9,12 @@ A PyTorch implementation of CLIP-guided Denoising Diffusion Probabilistic Models
 - **Guidance Visualization**: Quantify the effect of text conditioning on generation
 - **Process Transparency**: Animations and analysis tools to understand the "black box"
 
+## 🎬 See It In Action
+
+![Diffusion Process Animation](images/test.gif)
+
+*Watch the diffusion model transform noise into images guided by text prompts*
+
 ## 🔬 Core Concepts
 
 **Diffusion Models** learn to predict noise rather than generate pixels directly. By understanding noise patterns, they can reverse the corruption process—transforming pure noise into images.
