@@ -21,7 +21,7 @@ training:
   learning_rate: 0.0001
   c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
   save_frequency: 5  # Save checkpoint every N epochs
-  
+
 # Data parameters
 data:
   dataset_root: "data/tiny-imagenet-200"
@@ -30,7 +30,7 @@ data:
   max_samples: 10000  # Set to null to use all images
   preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
   clip_csv_path: "clip.csv"
-  
+
 # CLIP parameters
 clip:
   model_name: "ViT-B/32"
@@ -40,6 +40,6 @@ clip:
 paths:
   save_dir: "images/"
   checkpoint_dir: "model_checkpoint/"
-  
+
 # Device
 device: "cuda"  # or "cpu"

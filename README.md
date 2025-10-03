@@ -32,7 +32,7 @@ The key insight is that we can train a diffusion model using only image CLIP enc
 ├── setup.py                    # Package installation configuration
 │
 ├── src/                        # Source code
-│   └── ddpm_clip/             
+│   └── ddpm_clip/  
 │       ├── __init__.py
 │       ├── models/            # Model architectures
 │       │   ├── __init__.py
@@ -150,7 +150,7 @@ B = torch.linspace(0.0001, 0.02, T).to(device)
 ddpm = DDPM(B, device)
 
 # Initialize UNet
-model = UNet(T, img_ch=3, img_size=32, down_chs=(256, 256, 512), 
+model = UNet(T, img_ch=3, img_size=32, down_chs=(256, 256, 512),
              t_embed_dim=8, c_embed_dim=512)
 model.load_state_dict(torch.load("model_checkpoint/9.pth")["model"])
 model.to(device).eval()

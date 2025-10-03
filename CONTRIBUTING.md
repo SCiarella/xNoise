@@ -67,16 +67,16 @@ Example docstring format:
 def example_function(param1, param2):
     """
     Brief description of the function.
-    
+
     More detailed description if needed.
-    
+
     Parameters
     ----------
     param1 : type
         Description of param1.
     param2 : type
         Description of param2.
-        
+
     Returns
     -------
     return_type
@@ -103,7 +103,7 @@ def example_function(param1, param2):
    ```bash
    pip install -e ".[dev]"
    ```
-   
+
    This installs the package in editable mode along with development tools like pytest, black, flake8, and isort.
 
 ## Areas for Contribution
