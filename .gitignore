@@ -78,7 +78,7 @@ ehthumbs.db
 Desktop.ini
 
 # Project specific
-data/
+/data/
 !data/.gitkeep
 model_checkpoint/
 !model_checkpoint/.gitkeep

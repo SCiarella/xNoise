@@ -22,6 +22,7 @@ ipywidgets>=8.0.0
 
 # Optional: For configuration management
 pyyaml>=6.0
+types-PyYAML>=6.0  # Type stubs for mypy
 
 # Optional: For better performance
 scikit-image>=0.21.0

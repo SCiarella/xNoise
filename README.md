@@ -1,155 +1,79 @@
 # Understanding Noise in Text-to-Image Generation
 
-A PyTorch implementation of CLIP-guided Denoising Diffusion Probabilistic Models (DDPM) with emphasis on **interpretability**. This project explores how diffusion models learn to encode semantic information in noise patterns.
+A PyTorch implementation of CLIP-guided Denoising Diffusion Probabilistic Models (DDPM) focused on **explainability**. This project analyzes how diffusion models encode semantic information in noise patterns.
 
-## 🎯 Key Features
+## Key Features
 
-- **Explainability First**: Analyze and visualize how noise encodes semantic content
-- **Timestep Attribution**: Identify which denoising steps are most critical
-- **Guidance Visualization**: Quantify the effect of text conditioning on generation
-- **Process Transparency**: Animations and analysis tools to understand the "black box"
+- **Explainability-Focused**: Visualize and analyze noise patterns during generation
+- **CLIP-Guided**: Text-conditioned image generation using CLIP embeddings
+- **Classifier-Free Guidance**: Adjustable guidance strength for semantic control
+- **Educational**: Complete tutorial notebook with theory and implementation
 
-## 🎬 See It In Action
+![Diffusion Process Animation](images/analysis_generation.gif)
 
-![Diffusion Process Animation](images/test.gif)
-
-*Watch the diffusion model transform noise into images guided by text prompts*
-
-## 🔬 Core Concepts
-
-**Diffusion Models** learn to predict noise rather than generate pixels directly. By understanding noise patterns, they can reverse the corruption process—transforming pure noise into images.
-
-**CLIP** aligns text and images in a shared embedding space, enabling text-guided generation without requiring text captions in training data.
-
-**Classifier-Free Guidance** amplifies semantic control via:
-$$\tilde{\epsilon}_\theta(x_t, c) = (1 + w) \cdot \epsilon_\theta(x_t, c) - w \cdot \epsilon_\theta(x_t, \emptyset)$$
-
-This allows us to visualize how text changes noise prediction and tune guidance strength.
-
-## 📚 Complete Tutorial
-
-👉 **Start here: [examples/test.ipynb](examples/test.ipynb)**
-
-The notebook provides comprehensive coverage of:
-- Theoretical foundations and mathematical background
-- Step-by-step implementation details
-- Training on Tiny ImageNet with CLIP conditioning
-- xAI analysis: noise patterns, denoising trajectories, and guidance effects
-- Visualizations and animations of the generation process
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Clone and setup
-git clone https://github.com/yourusername/ddpm-clip.git
-cd ddpm-clip
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Install
 pip install -e .
 
-# Launch interactive tutorial
-jupyter notebook examples/test.ipynb
+# Train on Tiny ImageNet
+python examples/train.py --config config/model_default.yaml
+
+# Explore the analysis notebook
+jupyter notebook examples/explain_and_visualize.ipynb
 ```
 
-**Generate images** (after training):
+## Project Structure
+
+```
+├── examples/
+│   ├── explain_and_visualize.ipynb  # Main tutorial (START HERE)
+│   ├── train_model.ipynb           # Training walkthrough
+│   └── train.py                    # Training script
+├── src/ddpm_clip/
+│   ├── models/     # UNet, DDPM, EMA
+│   ├── data/       # CLIP dataset and preprocessing
+│   └── utils/      # Visualization and config utilities
+└── config/         # Model configurations (small/default/large)
+```
+
+## Training
+
+The training script supports multiple configurations and automatic checkpointing:
+
 ```bash
-python scripts/generate.py \
-    --checkpoint model_checkpoint/9.pth \
-    --prompts "A goldfish" "An oak tree" \
-    --output images/generated.png
+# Basic training
+python examples/train.py --config config/model_default.yaml
+
+# Skip CLIP extraction (if already done)
+python examples/train.py --config config/model_small.yaml --skip-clip-extraction
+
+# Disable animation generation
+python examples/train.py --config config/model_large.yaml --no-animation
 ```
 
-## 🏗️ Project Structure
+Training automatically resumes from the latest checkpoint if one exists.
 
-```
-├── examples/test.ipynb       # 📓 Complete tutorial (START HERE)
-├── src/ddpm_clip/           # Core implementation
-│   ├── models/              # UNet and DDPM
-│   ├── data/                # Dataset utilities
-│   └── utils/               # Visualization tools
-├── scripts/                 # Training & inference scripts
-└── config/                  # Hyperparameter configs
-```
+## Analysis
 
-## 🎨 Usage Examples
+The `explain_and_visualize.ipynb` notebook provides:
+- Theoretical foundations of diffusion models
+- Noise pattern analysis and interpretation
+- Timestep attribution to identify critical denoising steps
+- Guidance visualization to understand text conditioning effects
+- Generation animations and trajectory analysis
 
-**Train your model:**
-```bash
-python scripts/preprocess_clip.py --data_dir data/tiny-imagenet-200/train
-python scripts/train.py --config config/default.yaml
-```
+## Dataset
 
-**Analyze noise patterns:**
-```python
-from ddpm_clip.models import visualize_diffusion_process
+Tested on [Tiny ImageNet](http://cs231n.stanford.edu/tiny-imagenet-200.zip) (200 classes, 64×64 images). CLIP embeddings are automatically extracted during training or can be precomputed.
 
-visualize_diffusion_process(
-    ddpm=ddpm, model=model, prompt="A tabby cat",
-    w=1, top_k=7  # Show 7 most critical timesteps
-)
-```
+## References
 
-**Compare guidance strengths:**
-```python
-x_gen, x_gen_store = sample_tinyimg(
-    text_list=["A goldfish", "An oak tree"],
-    w_values=[-2, -1, 0, 1, 2]
-)
-```
+- [DDPM (Ho et al., 2020)](https://arxiv.org/abs/2006.11239)
+- [CLIP (Radford et al., 2021)](https://arxiv.org/abs/2103.00020)
+- [Classifier-Free Guidance (Ho & Salimans, 2022)](https://arxiv.org/abs/2207.12598)
 
-## 🔍 xAI Insights
-
-Through analysis in the notebook, you'll discover:
-- Early timesteps establish global structure (composition, layout)
-- Middle timesteps define semantic content (object identity)
-- Late timesteps refine details (texture, edges)
-- Different prompts may require different guidance weights for optimal results
-
-## ⚙️ Key Configuration
-
-```yaml
-timesteps: 400              # Diffusion steps
-batch_size: 16
-learning_rate: 0.0001
-c_drop_prob: 0.1           # Context dropout for classifier-free guidance
-down_channels: [256, 256, 512]
-```
-
-## 📊 Dataset
-
-Uses [Tiny ImageNet](http://cs231n.stanford.edu/tiny-imagenet-200.zip): 200 classes, 500 images/class, 64×64 resolution.
-
-**Custom data**: Run `scripts/preprocess_clip.py` to extract CLIP embeddings from your images.
-
-## 🐛 Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| CUDA OOM | Reduce `batch_size` or `img_size` |
-| Poor quality | Train longer, increase data, adjust `w` |
-| Slow training | Use preprocessed CLIP embeddings |
-
-## 🎓 Key References
-
-- [DDPM (Ho et al., 2020)](https://arxiv.org/abs/2006.11239) - Foundational diffusion paper
-- [CLIP (Radford et al., 2021)](https://arxiv.org/abs/2103.00020) - Vision-language alignment
-- [Classifier-Free Guidance (Ho & Salimans, 2022)](https://arxiv.org/abs/2207.12598) - Guidance technique
-
-## 📄 Citation
-
-```bibtex
-@article{ho2020denoising,
-  title={Denoising Diffusion Probabilistic Models},
-  author={Ho, Jonathan and Jain, Ajay and Abbeel, Pieter},
-  journal={NeurIPS},
-  year={2020}
-}
-```
-
-## 📜 License
+## License
 
 MIT License - see [LICENSE](LICENSE)
-
----
-
-**📓 For theory, implementation details, and xAI analysis, see [examples/test.ipynb](examples/test.ipynb)**

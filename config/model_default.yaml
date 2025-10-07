@@ -1,0 +1,64 @@
+# Configuration for improved CLIP-conditioned DDPM (v2)
+
+# Model identification
+model_name: "clip_ddpm_default"
+
+# Model parameters
+model:
+  img_size: 32
+  img_channels: 3
+  down_channels: [512, 512, 1024]  # Improved architecture - deeper and wider
+  t_embed_dim: 8
+  c_embed_dim: 512  # CLIP embedding size
+
+# Diffusion parameters
+diffusion:
+  timesteps: 400
+  beta_start: 0.0001
+  beta_end: 0.02
+
+# Training parameters
+training:
+  epochs: 100
+  batch_size: 64  # Increased for better gradient estimates
+  learning_rate: 0.0001
+  c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
+  save_frequency: 10  # Save checkpoint every N epochs
+
+  # Learning rate scheduler
+  lr_scheduler:
+    type: "cosine"  # CosineAnnealingLR
+    eta_min: 0.000001  # Minimum learning rate
+
+  # EMA (Exponential Moving Average)
+  ema:
+    enabled: true
+    decay: 0.9999
+
+# Data parameters
+data:
+  dataset_root: "../data/tiny-imagenet-200"
+  use_train: true
+  use_val: false
+  max_samples: 100000  # Number of samples to use
+  preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
+  clip_csv_path: "clip.csv"
+  random_seed: 11  # For reproducibility
+
+# CLIP parameters
+clip:
+  model_name: "ViT-B/32"
+  features: 512
+
+# Generation parameters
+generation:
+  text_prompts: ["goldfish swimming", "oak tree in forest", "beautiful sunset"]
+  guidance_weights: [-2, -1, 0, 1, 2]  # w values for classifier-free guidance
+
+# Paths (will be modified by model_name)
+paths:
+  save_dir: "../images/"
+  checkpoint_dir: "../model_checkpoint/"
+
+# Device
+device: "cuda"  # or "cpu"
