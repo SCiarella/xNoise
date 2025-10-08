@@ -23,7 +23,8 @@ training:
   batch_size: 32  # Smaller batch due to larger model
   learning_rate: 0.00005  # Lower LR for larger model
   c_drop_prob: 0.15  # Higher dropout for stronger classifier-free guidance
-  save_frequency: 10  # Save less frequently
+  save_frequency: 5
+  delete_old_checkpoints: true  # Delete old checkpoints to save disk space
 
   # Learning rate scheduler
   lr_scheduler:

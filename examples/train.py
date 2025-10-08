@@ -252,6 +252,9 @@ def setup_training(config, model, device):
     print(f"  Conditioning drop probability: {config['training']['c_drop_prob']}")
     print(f"  Save frequency: every {config['training']['save_frequency']} epochs")
     
+    delete_old = config['training'].get('delete_old_checkpoints', False)
+    print(f"  Delete old checkpoints: {delete_old}")
+    
     return optimizer, scheduler, ema, epochs
 
 
@@ -269,7 +272,7 @@ def load_checkpoint(config, model, optimizer, scheduler, ema):
             
             print(f"\nFound checkpoint: {latest_checkpoint}")
             print(f"Automatically resuming training...")
-            checkpoint = torch.load(latest_checkpoint, map_location='cuda')
+            checkpoint = torch.load(latest_checkpoint, map_location='cuda', weights_only=False)
             
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
@@ -289,6 +292,59 @@ def load_checkpoint(config, model, optimizer, scheduler, ema):
         print("\nNo checkpoint found - starting fresh training")
     
     return start_epoch, loss_history
+
+
+def delete_old_checkpoints(checkpoint_path, keep_latest=True, current_epoch=None):
+    """
+    Delete old checkpoint files to save disk space.
+    
+    Args:
+        checkpoint_path: Directory containing checkpoint files
+        keep_latest: If True, keep only the latest checkpoint (or current_epoch if provided)
+        current_epoch: If provided, keep only this checkpoint when keep_latest=True
+    """
+    if not os.path.exists(checkpoint_path):
+        return
+    
+    checkpoint_files = [f for f in os.listdir(checkpoint_path) if f.endswith('.pth')]
+    
+    if not checkpoint_files:
+        return
+    
+    if keep_latest:
+        # Keep only the checkpoint from current_epoch (if specified) or the latest one
+        if current_epoch is not None:
+            # Delete all checkpoints except the current one
+            for f in checkpoint_files:
+                epoch = int(f.split('.')[0])
+                if epoch != current_epoch:
+                    checkpoint_file = os.path.join(checkpoint_path, f)
+                    try:
+                        os.remove(checkpoint_file)
+                        print(f"  → Deleted old checkpoint: {f}")
+                    except Exception as e:
+                        print(f"  → Warning: Could not delete {f}: {e}")
+        else:
+            # Keep only the latest checkpoint
+            latest_epoch = max([int(f.split('.')[0]) for f in checkpoint_files])
+            for f in checkpoint_files:
+                epoch = int(f.split('.')[0])
+                if epoch != latest_epoch:
+                    checkpoint_file = os.path.join(checkpoint_path, f)
+                    try:
+                        os.remove(checkpoint_file)
+                        print(f"  → Deleted old checkpoint: {f}")
+                    except Exception as e:
+                        print(f"  → Warning: Could not delete {f}: {e}")
+    else:
+        # Delete all checkpoints
+        for f in checkpoint_files:
+            checkpoint_file = os.path.join(checkpoint_path, f)
+            try:
+                os.remove(checkpoint_file)
+                print(f"  → Deleted checkpoint: {f}")
+            except Exception as e:
+                print(f"  → Warning: Could not delete {f}: {e}")
 
 
 def generate_samples(model, ddpm, clip_model, config, INPUT_SIZE, T, device, save_path):
@@ -417,6 +473,11 @@ def train(config, args):
             
             torch.save(checkpoint_data, f"{checkpoint_path}/{epoch}.pth")
             
+            # Delete old checkpoints if enabled
+            delete_old = config['training'].get('delete_old_checkpoints', False)
+            if delete_old:
+                delete_old_checkpoints(checkpoint_path, keep_latest=True, current_epoch=epoch)
+            
             # Use EMA weights for generation if enabled
             if ema is not None:
                 ema.apply_shadow()
@@ -463,6 +524,13 @@ def train(config, args):
         grids = [generation_image(x.cpu(), text_list, w=w_list) for x in x_gen_store]
         save_animation(grids, save_dir + "generation_ema.gif")
         print(f"  Animation saved to: {save_dir}generation_ema.gif")
+    
+    # Clean up old checkpoints after successful training
+    delete_old = config['training'].get('delete_old_checkpoints', False)
+    if delete_old:
+        print(f"\nCleaning up old checkpoints...")
+        delete_old_checkpoints(checkpoint_path, keep_latest=True)
+        print(f"  Kept only the final checkpoint")
     
     print(f"\n{'='*80}")
     print(f"All files saved to:")
