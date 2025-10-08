@@ -82,9 +82,7 @@ Desktop.ini
 !data/.gitkeep
 model_checkpoint/
 !model_checkpoint/.gitkeep
-# Don't ignore the images directory itself
-!images/
-!images/.gitkeep
+images/
 TRASH/
 *.pth
 *.ckpt
@@ -94,12 +92,9 @@ TRASH/
 clip.csv
 *.csv
 
-# Generated images - but allow gifs
-images/*.png
-images/*.jpg
-images/*.jpeg
-!images/*.gif
-!images/DLI_Header.png
+# Documentation assets (keep these)
+!docs/
+!docs/assets/
 
 # Logs
 *.log
@@ -110,6 +105,3 @@ wandb/
 *.tmp
 *.temp
 *~
-
-# Allow specific visualization files
-!images/analysis_generation.gif

@@ -9,7 +9,7 @@ A PyTorch implementation of CLIP-guided Denoising Diffusion Probabilistic Models
 - **Classifier-Free Guidance**: Adjustable guidance strength for semantic control
 - **Educational**: Complete tutorial notebook with theory and implementation
 
-![Diffusion Process Animation](images/analysis_generation.gif)
+![Diffusion Process Animation](docs/assets/analysis_generation.gif)
 
 ## Quick Start
 
