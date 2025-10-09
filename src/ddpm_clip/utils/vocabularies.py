@@ -1,6 +1,8 @@
 """
 Label vocabularies for different datasets compatible with CLIP.
 """
+import os
+import ast
 
 
 def _get_tiny_imagenet_labels():
@@ -85,40 +87,25 @@ def _get_imagenet1k_labels():
     """
     Get all 1000 ImageNet-1k class labels.
     These are the standard ImageNet class names.
+    Each label is split at commas to extract individual class names.
     """
-    # This is a subset - full list available at:
-    # https://gist.github.com/yrevar/942d3a0ac09ec9e5eb3a
-    print('Warning: this is not supported yet (it is only a boilerplate)')
-    imagenet_labels = [
-        'tench',
-        'goldfish',
-        'great white shark',
-        'tiger shark',
-        'hammerhead',
-        'electric ray',
-        'stingray',
-        'cock',
-        'hen',
-        'ostrich',
-        'brambling',
-        'goldfinch',
-        'house finch',
-        'junco',
-        'indigo bunting',
-        'robin',
-        'bulbul',
-        'jay',
-        'magpie',
-        'chickadee',
-        'water ouzel',
-        'kite',
-        'bald eagle',
-        'vulture',
-        'great grey owl',
-        'European fire salamander',
-        # ... (truncated for brevity - full 1000 classes)
-        # Download complete list from the gist above
-    ]
+
+    # Get the path to the labels file (in the same directory as this module)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    labels_path = os.path.join(current_dir, 'imagenet1K_labels.txt')
+
+    # Read and parse the dictionary from the file
+    with open(labels_path, 'r') as f:
+        content = f.read()
+        labels_dict = ast.literal_eval(content)
+
+    # Convert dictionary to list and split each label at commas
+    imagenet_labels = []
+    for i in range(len(labels_dict)):
+        # Split by comma and take all parts as separate labels
+        label_parts = [part.strip() for part in labels_dict[i].split(',')]
+        imagenet_labels.extend(label_parts)
+
     return imagenet_labels
 
 
