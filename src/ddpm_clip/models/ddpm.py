@@ -1,13 +1,8 @@
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-import numpy as np
-import clip
 
-from ..utils.visualization import generation_image, to_image
-from ..utils.vocabularies import (_get_tiny_imagenet_labels,
-                                  _get_cifar100_labels, _get_imagenet1k_labels,
-                                  _get_openai_imagenet_labels)
+from ..utils.visualization import generation_image
 
 
 class DDPM:
@@ -153,6 +148,103 @@ class DDPM:
                 B_t) * new_noise  # Add stochastic component
 
     @torch.no_grad()
+    def generate_images_with_guidance(self,
+                                      model,
+                                      img_ch,
+                                      img_size,
+                                      text_embedding,
+                                      n_samples=1,
+                                      w=0.5,
+                                      timesteps_to_store=None,
+                                      return_intermediate=False):
+        """
+        Core image generation function with classifier-free guidance.
+
+        This is the shared implementation used by all generation functions to avoid code duplication.
+
+        Parameters
+        ----------
+        model : nn.Module
+            The trained denoising model.
+        img_ch : int
+            Number of image channels.
+        img_size : int
+            Size of square images (height and width).
+        text_embedding : torch.Tensor
+            CLIP text embedding of shape (1, embed_dim).
+        n_samples : int, optional
+            Number of samples to generate in parallel, by default 1.
+        w : float, optional
+            Guidance weight for classifier-free guidance, by default 0.5.
+        timesteps_to_store : list of int or None, optional
+            Specific timesteps at which to store intermediate results.
+            If None, no intermediate results are stored.
+        return_intermediate : bool, optional
+            Whether to return intermediate results, by default False.
+
+        Returns
+        -------
+        x_t : torch.Tensor
+            Final generated images of shape (n_samples, channels, height, width).
+        stored_data : dict or None
+            If return_intermediate is True, returns dict with:
+            - 'images': List of image tensors at specified timesteps
+            - 'noises_conditioned': List of conditioned noise predictions
+            - 'noises_unconditioned': List of unconditioned noise predictions
+            - 'timesteps': List of timesteps where data was stored
+        """
+        # Prepare context embeddings (conditioned + unconditioned)
+        c = text_embedding.repeat(n_samples, 1)
+        c = c.repeat(2, 1)  # Double for conditioned + unconditioned
+        c_mask = torch.ones_like(c).to(self.device)
+        c_mask[n_samples:] = 0.0
+
+        # Initialize storage
+        stored_data = None
+        if return_intermediate:
+            stored_data = {
+                'images': [],
+                'noises_conditioned': [],
+                'noises_unconditioned': [],
+                'timesteps': []
+            }
+
+        # Start from pure Gaussian noise
+        x_t = torch.randn((n_samples, img_ch, img_size, img_size),
+                          device=self.device)
+
+        # Reverse diffusion: Go from T to 0, removing noise step by step
+        for i in range(0, self.T)[::-1]:  # T-1, T-2, ..., 1, 0
+            t = torch.tensor([i], device=self.device)
+            t = t.repeat(n_samples, 1, 1, 1)
+
+            # Double the batch for conditional and unconditional
+            x_t_double = x_t.repeat(2, 1, 1, 1)
+            t_double = t.repeat(2, 1, 1, 1)
+
+            # Predict noise
+            e_t = model(x_t_double, t_double, c, c_mask)
+            e_t_keep_c = e_t[:n_samples]
+            e_t_drop_c = e_t[n_samples:]
+
+            # Apply classifier-free guidance
+            e_t_guided = (1 + w) * e_t_keep_c - w * e_t_drop_c
+
+            # Perform reverse diffusion step
+            x_t = self.reverse_q(x_t, t, e_t_guided)
+
+            # Store intermediate results if requested
+            if return_intermediate and timesteps_to_store is not None and i in timesteps_to_store:
+                stored_data['images'].append(x_t.clone())
+                stored_data['noises_conditioned'].append(e_t_keep_c.clone())
+                stored_data['noises_unconditioned'].append(e_t_drop_c.clone())
+                stored_data['timesteps'].append(i)
+
+        if return_intermediate:
+            return x_t, stored_data
+        return x_t
+
+    @torch.no_grad()
     def sample_images(self,
                       model,
                       img_ch,
@@ -194,373 +286,6 @@ class DDPM:
                 generation_image(x_t.detach().cpu())
                 plot_number += 1
         plt.show()
-
-
-# Visualization function for diffusion process analysis
-@torch.no_grad()
-def visualize_diffusion_process(ddpm,
-                                model,
-                                clip_model,
-                                clip_preprocess,
-                                embed_size,
-                                device,
-                                img_ch,
-                                img_size,
-                                timesteps_to_show=None,
-                                prompt='A cute cat',
-                                w=0.5,
-                                top_k=5,
-                                vocabulary='imagenet1k'):
-    """
-    Visualize the diffusion process and compute CLIP similarities.
-
-    Parameters
-    ----------
-    ddpm : DDPM
-        DDPM instance containing diffusion parameters.
-    model : nn.Module
-        The trained denoising model.
-    clip_model : nn.Module
-        CLIP model for computing embeddings.
-    clip_preprocess : transforms.Compose
-        CLIP preprocessing transformations.
-    embed_size : int
-        Size of CLIP embeddings.
-    device : str or torch.device
-        Device to run computations on.
-    img_ch : int
-        Number of image channels.
-    img_size : int
-        Size of square images (height and width).
-    timesteps_to_show : list of int or None, optional
-        Specific timesteps to visualize. If None, shows evenly spaced steps, by default None.
-    prompt : str, optional
-        Text prompt for generation, by default "A cute cat".
-    w : float, optional
-        Guidance weight for classifier-free guidance, by default 0.5.
-    top_k : int, optional
-        Number of top similar images to display, by default 5.
-    vocabulary : str, optional
-        Which vocabulary to use: 'cifar100', 'tinyimagenet', 'imagenet1k', or 'openai_imagenet'
-        by default 'imagenet1k'.
-
-    Returns
-    -------
-    None
-        Displays matplotlib figures.
-    """
-    # Select vocabulary based on parameter
-    if vocabulary == 'cifar100':
-        labels = _get_cifar100_labels()
-    elif vocabulary == 'tinyimagenet':
-        # Tiny ImageNet 200 classes - these are the actual class names
-        labels = _get_tiny_imagenet_labels()
-    elif vocabulary == 'imagenet1k':
-        # Full ImageNet-1k vocabulary (1000 classes)
-        labels = _get_imagenet1k_labels()
-    elif vocabulary == 'openai_imagenet':
-        # OpenAI's curated ImageNet labels (cleaner names)
-        labels = _get_openai_imagenet_labels()
-    else:
-        raise ValueError(f"Unknown vocabulary: {vocabulary}")
-
-    if timesteps_to_show is None:
-        # Show 8 evenly spaced timesteps from 0 to T-1 (clean to noisy)
-        timesteps_to_show = torch.linspace(0, ddpm.T - 1, 8).long().tolist()
-        print('Showing timesteps:', timesteps_to_show)
-
-    n_steps = len(timesteps_to_show)
-
-    # Prepare text embeddings for comparison
-    text_tokens = clip.tokenize(labels).to(device)
-    text_embeddings = clip_model.encode_text(text_tokens).float()
-    text_embeddings /= text_embeddings.norm(dim=-1, keepdim=True)
-
-    # Create figure with subplots
-    fig, axes = plt.subplots(n_steps, 8, figsize=(22, n_steps * 2))
-    if n_steps == 1:
-        axes = axes.reshape(1, -1)
-
-    # Adjust spacing between subplots
-    plt.subplots_adjust(wspace=0.025, hspace=0.05)
-
-    # Column headers
-    col_titles = [
-        'Diffusion Step', 'Top CLIP Match (Image)', 'Conditioned Noise',
-        'Top CLIP Match (Cond. Noise)', 'Unconditioned Noise',
-        'Top CLIP Match (Uncond. Noise)', 'Noise Difference',
-        'Top CLIP Match (Diff.)'
-    ]
-    for i, title in enumerate(col_titles):
-        axes[0, i].set_title(title, fontsize=12, fontweight='bold')
-
-    stored_images = []
-    stored_noises = []
-    stored_uncond_noises = []
-
-    n_samples = 1
-
-    # Font size for CLIP interpretation text (easy to tune)
-    clip_text_fontsize = 10
-
-    # Embed conditioning text
-    text_tokens = clip.tokenize(prompt).to(device)
-    c = clip_model.encode_text(text_tokens).float()
-    # Double it (for unconditioned version)
-    c = c.repeat(2, 1)
-
-    # Don't drop context for generation
-    c_mask = torch.ones_like(c).to(device)
-    c_mask[n_samples:] = 0.0
-
-    # **** Reverse diffusion process to generate the image
-    # Start from pure Gaussian noise
-    x_t = torch.randn((1, img_ch, img_size, img_size), device=ddpm.device)
-    # Go from T to 0, removing noise step by step
-    for i in range(0, ddpm.T)[::-1]:  # T-1, T-2, ..., 1, 0
-        t = torch.full((1, ), i, device=ddpm.device).float()
-        # Double the batch (to have condition+uncondition)
-        x_t = x_t.repeat(2, 1, 1, 1)
-        t = t.repeat(2, 1, 1, 1)
-
-        # Find the noise
-        e_t = model(x_t, t, c, c_mask)
-        e_t_keep_c = e_t[:n_samples]
-        e_t_drop_c = e_t[n_samples:]
-        # This is the weighted conditioning
-        e_t = (1 + w) * e_t_keep_c - w * e_t_drop_c
-
-        # Deduplicate batch for reverse diffusion
-        x_t = x_t[:n_samples]
-        t = t[:n_samples]
-        x_t = ddpm.reverse_q(x_t, t, e_t)
-
-        if i in timesteps_to_show:
-            # Store the (first) image at this timestep
-            stored_images.append(x_t[0].clone())
-            # Store the (first) predicted noise at this timestep
-            stored_noises.append(e_t_keep_c[0].clone())
-            # Also store unconditioned versions for comparison
-            stored_uncond_noises.append(e_t_drop_c[0].clone())
-
-    for idx, t_val in enumerate(timesteps_to_show):
-        t = torch.tensor([t_val], device=device).float()
-
-        # Column 1: Show the noisy image
-        # Convert tensor to displayable format using your existing to_image function
-        img_pil = to_image(stored_images[idx].detach().cpu())
-        axes[idx, 0].imshow(img_pil)
-        axes[idx, 0].set_ylabel(f't={t_val}', fontsize=12)
-        axes[idx, 0].axis('off')
-
-        # Column 2: CLIP interpretation of the noisy image
-        try:
-            # Process noisy image for CLIP using your existing to_image function
-            image_pil = to_image(stored_images[idx].detach().cpu())
-            image_clip_input = torch.tensor(
-                np.stack([clip_preprocess(image_pil)])).to(device)
-            image_embedding = clip_model.encode_image(image_clip_input).float()
-            image_embedding /= image_embedding.norm(dim=-1, keepdim=True)
-
-            # Find top_k matches for noisy image
-            image_similarities = (text_embeddings * image_embedding).sum(-1)
-            top_image_values, top_image_indices = image_similarities.topk(
-                top_k)
-
-            # Create text showing top_k matches
-            image_matches = []
-            for i in range(top_k):
-                label = labels[top_image_indices[i].item()]
-                score = top_image_values[i].item()
-                image_matches.append(f"{label}: {score:.2f}")
-            image_text = '\n'.join(image_matches)
-
-            axes[idx, 1].text(0.5,
-                              0.5,
-                              image_text,
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 1].transAxes,
-                              fontsize=clip_text_fontsize,
-                              bbox=dict(boxstyle='round,pad=0.3',
-                                        facecolor='lightgreen',
-                                        alpha=0.8))
-        except Exception:
-            axes[idx, 1].text(0.5,
-                              0.5,
-                              'Image CLIP\nanalysis failed',
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 1].transAxes,
-                              fontsize=clip_text_fontsize)
-        axes[idx, 1].axis('off')
-
-        # Column 3: Show the conditioned noise
-        noise_vis = stored_noises[idx]
-        if noise_vis.shape[0] == 3:  # RGB
-            axes[idx, 2].imshow(noise_vis.permute(1, 2, 0).cpu().numpy())
-        else:  # Grayscale
-            axes[idx, 2].imshow(noise_vis[0].cpu().numpy(), cmap='gray')
-        axes[idx, 2].axis('off')
-
-        # Column 4: CLIP interpretation of the conditioned noise
-        try:
-            # Process noise for CLIP using your existing to_image function
-            noise_pil = to_image(noise_vis)
-            noise_clip_input = torch.tensor(
-                np.stack([clip_preprocess(noise_pil)])).to(device)
-            noise_embedding = clip_model.encode_image(noise_clip_input).float()
-            noise_embedding /= noise_embedding.norm(dim=-1, keepdim=True)
-
-            # Find top_k matches for noise
-            noise_similarities = (text_embeddings * noise_embedding).sum(-1)
-            top_noise_values, top_noise_indices = noise_similarities.topk(
-                top_k)
-
-            # Create text showing top_k matches
-            noise_matches = []
-            for i in range(top_k):
-                label = labels[top_noise_indices[i].item()]
-                score = top_noise_values[i].item()
-                noise_matches.append(f"{label}: {score:.2f}")
-            noise_text = '\n'.join(noise_matches)
-
-            axes[idx, 3].text(0.5,
-                              0.5,
-                              noise_text,
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 3].transAxes,
-                              fontsize=clip_text_fontsize,
-                              bbox=dict(boxstyle='round,pad=0.3',
-                                        facecolor='lightblue',
-                                        alpha=0.8))
-        except Exception:
-            axes[idx, 3].text(0.5,
-                              0.5,
-                              'Noise CLIP\nanalysis failed',
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 3].transAxes,
-                              fontsize=clip_text_fontsize)
-        axes[idx, 3].axis('off')
-
-        # Column 5: Show the unconditioned noise
-        uncond_noise_vis = stored_uncond_noises[idx]
-        if uncond_noise_vis.shape[0] == 3:  # RGB
-            axes[idx,
-                 4].imshow(uncond_noise_vis.permute(1, 2, 0).cpu().numpy())
-        else:  # Grayscale
-            axes[idx, 4].imshow(uncond_noise_vis[0].cpu().numpy(), cmap='gray')
-        axes[idx, 4].axis('off')
-
-        # Column 6: CLIP interpretation of the unconditioned noise
-        try:
-            # Process unconditioned noise for CLIP
-            uncond_noise_pil = to_image(uncond_noise_vis)
-            uncond_noise_clip_input = torch.tensor(
-                np.stack([clip_preprocess(uncond_noise_pil)])).to(device)
-            uncond_noise_embedding = clip_model.encode_image(
-                uncond_noise_clip_input).float()
-            uncond_noise_embedding /= uncond_noise_embedding.norm(dim=-1,
-                                                                  keepdim=True)
-
-            # Find top_k matches for unconditioned noise
-            uncond_noise_similarities = (text_embeddings *
-                                         uncond_noise_embedding).sum(-1)
-            top_uncond_noise_values, top_uncond_noise_indices = uncond_noise_similarities.topk(
-                top_k)
-
-            # Create text showing top_k matches
-            uncond_noise_matches = []
-            for i in range(top_k):
-                label = labels[top_uncond_noise_indices[i].item()]
-                score = top_uncond_noise_values[i].item()
-                uncond_noise_matches.append(f"{label}: {score:.2f}")
-            uncond_noise_text = '\n'.join(uncond_noise_matches)
-
-            axes[idx, 5].text(0.5,
-                              0.5,
-                              uncond_noise_text,
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 5].transAxes,
-                              fontsize=clip_text_fontsize,
-                              bbox=dict(boxstyle='round,pad=0.3',
-                                        facecolor='lightyellow',
-                                        alpha=0.8))
-        except Exception:
-            axes[idx, 5].text(0.5,
-                              0.5,
-                              'Uncond. Noise CLIP\nanalysis failed',
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 5].transAxes,
-                              fontsize=clip_text_fontsize)
-        axes[idx, 5].axis('off')
-
-        # Column 7: Show the difference between conditioned and unconditioned noise
-        noise_diff = stored_noises[idx] - stored_uncond_noises[idx]
-        if noise_diff.shape[0] == 3:  # RGB
-            # Enhance visibility by normalizing to full range
-            diff_vis = (noise_diff - noise_diff.min()) / (
-                noise_diff.max() - noise_diff.min() + 1e-8)
-            axes[idx, 6].imshow(diff_vis.permute(1, 2, 0).cpu().numpy())
-        else:  # Grayscale
-            axes[idx, 6].imshow(noise_diff[0].cpu().numpy(),
-                                cmap='seismic',
-                                vmin=noise_diff.min(),
-                                vmax=noise_diff.max())
-        axes[idx, 6].axis('off')
-
-        # Column 8: CLIP interpretation of the noise difference
-        try:
-            # Process noise difference for CLIP
-            diff_pil = to_image(noise_diff)
-            diff_clip_input = torch.tensor(
-                np.stack([clip_preprocess(diff_pil)])).to(device)
-            diff_embedding = clip_model.encode_image(diff_clip_input).float()
-            diff_embedding /= diff_embedding.norm(dim=-1, keepdim=True)
-
-            # Find top_k matches for noise difference
-            diff_similarities = (text_embeddings * diff_embedding).sum(-1)
-            top_diff_values, top_diff_indices = diff_similarities.topk(top_k)
-
-            # Create text showing top_k matches
-            diff_matches = []
-            for i in range(top_k):
-                label = labels[top_diff_indices[i].item()]
-                score = top_diff_values[i].item()
-                diff_matches.append(f"{label}: {score:.2f}")
-            diff_text = '\n'.join(diff_matches)
-
-            axes[idx, 7].text(0.5,
-                              0.5,
-                              diff_text,
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 7].transAxes,
-                              fontsize=clip_text_fontsize,
-                              bbox=dict(boxstyle='round,pad=0.3',
-                                        facecolor='lightcoral',
-                                        alpha=0.8))
-        except Exception:
-            axes[idx, 7].text(0.5,
-                              0.5,
-                              'Diff CLIP\nanalysis failed',
-                              ha='center',
-                              va='center',
-                              transform=axes[idx, 7].transAxes,
-                              fontsize=clip_text_fontsize)
-        axes[idx, 7].axis('off')
-
-    plt.suptitle(
-        f"DDPM process + CLIP conditioning:'{prompt}' with weight {w}",
-        fontsize=16)
-    plt.tight_layout(rect=[0, 0, 1, 0.98], pad=0.5)
-    plt.show()
-
-    return stored_images, stored_noises
 
 
 @torch.no_grad()
