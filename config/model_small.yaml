@@ -38,14 +38,17 @@ training:
 
 # Data parameters
 data:
-  dataset_root: "../data/tiny-imagenet-200"
-  dataset_type: "tinyimagenet"  # Options: 'tinyimagenet', 'imagenet1k', or custom (see train.py)
-  use_train: true
-  use_val: false
-  max_samples: 50000  # Use fewer samples for faster training
-  preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
+  # HDF5 dataset file (created with scripts/images_to_hdf5.py)
+  h5_path: "train_images.h5"
+
+  # CLIP embeddings CSV file
   clip_csv_path: "clip.csv"
-  random_seed: 42  # For reproducibility
+
+  # Optional: for CLIP extraction if CSV doesn't exist
+  dataset_root: "../data/tiny-imagenet-200"
+  dataset_type: "tinyimagenet"
+  max_samples: 50000
+  random_seed: 42
 
 # CLIP parameters
 clip:

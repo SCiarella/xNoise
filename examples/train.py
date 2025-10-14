@@ -2,18 +2,21 @@
 """
 CLIP-Conditioned DDPM Training Script
 
-This script provides a complete training pipeline for CLIP-conditioned diffusion models.
+This script provides a complete training pipeline for CLIP-conditioned diffusion models
+using HDF5 datasets for efficient data loading.
 
 Usage:
     python train.py --config ../config/model_small.yaml
-    python train.py --config ../config/model_v2.yaml --no-animation
-    python train.py --config ../config/model_large.yaml --skip-clip-extraction
+    python train.py --config ../config/model_small.yaml --no-animation
 
 Arguments:
     --config: Path to YAML configuration file (required)
     --no-animation: Skip animation generation to save time
-    --skip-clip-extraction: Skip CLIP embedding extraction (assumes CSV exists)
 
+Data Format:
+    - Images should be in HDF5 format (use scripts/images_to_hdf5.py to convert)
+    - CLIP embeddings should be in CSV format (extracted separately)
+    
 Note: Training automatically resumes from the latest checkpoint if one exists.
 """
 
@@ -62,134 +65,138 @@ def parse_args():
                         help='Path to YAML configuration file')
     parser.add_argument('--no-animation', action='store_true',
                         help='Skip animation generation')
-    parser.add_argument('--skip-clip-extraction', action='store_true',
-                        help='Skip CLIP embedding extraction')
     return parser.parse_args()
 
 
-def collect_image_paths(dataset_root, dataset_type='imagenet1k'):
+def prepare_clip_embeddings(config, device):
     """
-    Collect image paths based on dataset type.
-    
-    Args:
-        dataset_root: Root directory of the dataset
-        dataset_type: Type of dataset ('tinyimagenet' or 'imagenet1k')
-    
-    Returns:
-        List of image paths
-    """
-    if dataset_type == 'tinyimagenet':
-        data_paths = glob.glob(f"{dataset_root}/train/*/images/*.JPEG")
-    elif dataset_type == 'imagenet1k':
-        data_paths = glob.glob(f"{dataset_root}/train/*/*.jpg")
-    else:
-        raise ValueError(f"Unknown dataset type: {dataset_type}. Use 'tinyimagenet' or 'imagenet1k'")
-    
-    return data_paths
-
-
-def prepare_dataset(config, device, skip_extraction=False):
-    """
-    Prepare dataset and extract CLIP embeddings if needed.
+    Prepare CLIP embeddings CSV file if it doesn't exist.
+    Extracts embeddings directly from HDF5 file.
     
     Args:
         config: Configuration object containing dataset parameters
         device: Device to run CLIP extraction on
-        skip_extraction: Skip CLIP embedding extraction if True
     
     Returns:
         Path to the CSV file containing CLIP embeddings
     """
     import clip
+    import h5py
+    import csv
     
-    # Get dataset configuration
-    dataset_root = config['data']['dataset_root']
-    dataset_type = config['data'].get('dataset_type', 'imagenet1k')
-    ndata = config['data']['max_samples']
-    random_seed = config['data']['random_seed']
+    clip_csv_path = config['data']['clip_csv_path']
     
-    print(f"\nPreparing dataset: {dataset_type}")
-    print(f"Dataset root: {dataset_root}")
+    # Check if CSV already exists
+    if os.path.exists(clip_csv_path):
+        print(f"\nCLIP embeddings CSV already exists: {clip_csv_path}")
+        return clip_csv_path
     
-    # Collect image paths based on dataset type
-    data_paths = collect_image_paths(dataset_root, dataset_type)
-    print(f"Found {len(data_paths)} total images")
+    # Extract embeddings from HDF5 file
+    h5_path = config['data']['h5_path']
+    batch_size = config['training']['batch_size']
     
-    # Shuffle and limit dataset size
-    random.seed(random_seed)
-    random.shuffle(data_paths)
-    data_paths = data_paths[:ndata]
+    print(f"\nCLIP embeddings CSV not found, extracting from HDF5...")
+    print(f"HDF5 file: {h5_path}")
     
-    print(f"Using {len(data_paths)} images for training")
+    # Load CLIP model
+    print("Loading CLIP model...")
+    clip_model, clip_preprocess, _ = load_clip_model(device)
+    clip_model.eval()
     
-    # Extract CLIP embeddings
-    csv_path = config['data']['clip_csv_path']
-    
-    if not skip_extraction:
-        print("\nExtracting CLIP embeddings...")
-        clip_model, clip_preprocess, _ = load_clip_model(device)
+    # Open HDF5 file
+    with h5py.File(h5_path, 'r') as h5f:
+        n_images = h5f['images'].shape[0]
+        print(f"Found {n_images} images in HDF5 file")
         
-        num_processed, time_taken = extract_clip_embeddings(
-            data_paths,
-            clip_model,
-            clip_preprocess,
-            csv_path,
-            device=device,
-            batch_size=config['training']['batch_size'],
-            skip_existing=True,
-            verbose=True
-        )
+        # Extract embeddings in batches
+        all_embeddings = []
+        start_time = time.time()
         
-        print(f"\nCLIP embedding extraction complete!")
-        print(f"Processed {num_processed} images in {time_taken:.1f}s")
-        if num_processed > 0:
-            print(f"Average rate: {num_processed/time_taken:.1f} images/second")
+        print("Extracting CLIP embeddings...")
+        with torch.no_grad():
+            for i in range(0, n_images, batch_size):
+                batch_end = min(i + batch_size, n_images)
+                
+                # Load batch from HDF5
+                batch_images = h5f['images'][i:batch_end]
+                
+                # Convert to PIL Images and apply CLIP preprocessing
+                batch_pil = []
+                for img_array in batch_images:
+                    img_pil = Image.fromarray(img_array.astype(np.uint8))
+                    batch_pil.append(clip_preprocess(img_pil))
+                
+                # Stack preprocessed images into batch tensor
+                batch_tensor = torch.stack(batch_pil).to(device)
+                
+                # Extract CLIP embeddings
+                embeddings = clip_model.encode_image(batch_tensor)
+                embeddings = embeddings.cpu().numpy()
+                
+                all_embeddings.extend(embeddings)
+                
+                if (i // batch_size) % 10 == 0:
+                    print(f"  Processed {batch_end}/{n_images} images...")
         
-        # Clean up CLIP model
-        del clip_model, clip_preprocess
-        gc.collect()
-        torch.cuda.empty_cache()
-    else:
-        print(f"\nSkipping CLIP extraction - using existing CSV: {csv_path}")
+        time_taken = time.time() - start_time
+        
+        # Save to CSV
+        print(f"\nSaving embeddings to {clip_csv_path}...")
+        with open(clip_csv_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for idx, embedding in enumerate(all_embeddings):
+                # First column: dummy path (for compatibility)
+                row = [f"image_{idx:06d}"] + embedding.tolist()
+                writer.writerow(row)
     
-    return csv_path
+    print(f"\nCLIP embedding extraction complete!")
+    print(f"Processed {n_images} images in {time_taken:.1f}s")
+    print(f"Average rate: {n_images/time_taken:.1f} images/second")
+    
+    # Clean up CLIP model
+    del clip_model, clip_preprocess
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    return clip_csv_path
 
 
-def create_dataloaders(config, csv_path, device):
-    """Create dataset and dataloader."""
+def create_dataloaders(config, device):
+    """Create HDF5 dataset and dataloader."""
     IMG_CH = config['model']['img_channels']
     IMG_SIZE = config['model']['img_size']
     BATCH_SIZE = config['training']['batch_size']
     CLIP_FEATURES = config['clip']['features']
     
-    # Pre-transforms: applied once when loading
-    pre_transforms = transforms.Compose([
-        transforms.Resize(IMG_SIZE),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda t: (t * 2) - 1)  # Scale to [-1, 1]
-    ])
+    # Get paths from config
+    h5_path = config['data']['h5_path']
+    clip_csv_path = config['data']['clip_csv_path']
     
-    # Random transforms: applied on-the-fly for data augmentation
+    print(f"\nCreating HDF5 dataset...")
+    print(f"  HDF5 file: {h5_path}")
+    print(f"  CLIP CSV: {clip_csv_path}")
+    print(f"  Image size: {IMG_SIZE}x{IMG_SIZE}")
+    print(f"  Batch size: {BATCH_SIZE}")
+
+    # Note: Images are already converted to tensors and normalized to [-1, 1] in CLIPDataset
+    # Pre-transforms should work with tensor inputs
+    pre_transforms = None  # No additional transforms needed, dataset handles conversion
+    
+    # Random transforms for augmentation (images are already tensors normalized to [-1, 1])
     random_transforms = transforms.Compose([
         transforms.RandomCrop(IMG_SIZE),
         transforms.RandomHorizontalFlip(),
     ])
     
-    print(f"\nCreating dataset...")
-    print(f"  Image size: {IMG_SIZE}x{IMG_SIZE}")
-    print(f"  Batch size: {BATCH_SIZE}")
-    
-    # Create dataset
+    # Create HDF5 dataset
     train_data = CLIPDataset(
-        csv_path,
+        h5_path=h5_path,
+        clip_csv_path=clip_csv_path,
         img_transforms=pre_transforms,
         random_transforms=random_transforms,
         clip_features=CLIP_FEATURES,
-        preprocessed_clip=config['data']['preprocessed_clip'],
         device='cpu'  # Keep data on CPU for efficient DataLoader
     )
-
-    print(f" Clip dataset created with {len(train_data)} samples")
     
     dataloader = DataLoader(
         train_data,
@@ -197,9 +204,9 @@ def create_dataloaders(config, csv_path, device):
         shuffle=True,
         drop_last=True,
         num_workers=4,
-        pin_memory=True,  # pins CPU memory for faster GPU transfer
+        pin_memory=True,
         persistent_workers=True,
-        prefetch_factor=2  # Prefetch 2 batches per worker
+        prefetch_factor=2
     )
     
     print(f"  Dataset size: {len(train_data)} images")
@@ -299,11 +306,11 @@ def train(config, args):
     save_dir = config.save_dir + "/"
     checkpoint_path = config.checkpoint_dir
     
-    # Prepare dataset
-    csv_path = prepare_dataset(config, device, skip_extraction=args.skip_clip_extraction)
+    # Prepare CLIP embeddings if needed
+    clip_csv_path = prepare_clip_embeddings(config, device)
     
     # Create dataloaders
-    dataloader, INPUT_SIZE, BATCH_SIZE = create_dataloaders(config, csv_path, device)
+    dataloader, INPUT_SIZE, BATCH_SIZE = create_dataloaders(config, device)
     
     # Initialize model
     ddpm, model, model_compiled, T = initialize_model(config, device)

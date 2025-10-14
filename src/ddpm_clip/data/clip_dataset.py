@@ -3,73 +3,106 @@ Dataset class for CLIP-embedded image data.
 """
 
 import csv
+import h5py
 import torch
 from torch.utils.data import Dataset
-from PIL import Image
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 
 
 class CLIPDataset(Dataset):
     """
-    PyTorch Dataset for images with precomputed CLIP embeddings.
+    PyTorch Dataset for images with precomputed CLIP embeddings from HDF5 files.
 
-    Efficient version: loads images on-the-fly instead of preloading all into memory.
+    Loads images from HDF5 format (created by scripts/images_to_hdf5.py) and
+    CLIP embeddings from a CSV file.
 
     Args:
-        csv_path: Path to CSV file containing image paths and CLIP embeddings
-        img_transforms: Transforms to apply to images when loading
+        h5_path: Path to HDF5 file containing images and labels
+        clip_csv_path: Path to CSV file containing CLIP embeddings
+        img_transforms: Additional transforms to apply (optional, images are already normalized)
         random_transforms: Random augmentation transforms to apply on __getitem__
         clip_features: Dimension of CLIP embeddings (default: 512)
-        preprocessed_clip: Whether CLIP embeddings are preprocessed in CSV
-        clip_model: CLIP model for on-the-fly encoding (required if preprocessed_clip=False)
-        clip_preprocess: CLIP preprocessing (required if preprocessed_clip=False)
         device: Device to load tensors onto (use 'cpu' for multi-worker DataLoader)
     """
 
     def __init__(self,
-                 csv_path: str,
+                 h5_path: str,
+                 clip_csv_path: str,
                  img_transforms: Optional[Callable] = None,
                  random_transforms: Optional[Callable] = None,
                  clip_features: int = 512,
-                 preprocessed_clip: bool = True,
-                 clip_model: Optional[Any] = None,
-                 clip_preprocess: Optional[Callable] = None,
                  device: str = 'cpu'):
+
+        self.h5_path = h5_path
         self.img_transforms = img_transforms
         self.random_transforms = random_transforms
-        self.preprocessed_clip = preprocessed_clip
-        self.clip_model = clip_model
-        self.clip_preprocess = clip_preprocess
         self.device = device
 
-        # Store image paths instead of loaded images
-        self.img_paths = []
-        self.labels_list = []
+        # Open HDF5 file to get metadata
+        with h5py.File(h5_path, 'r') as h5f:
+            self.n_images = h5f['images'].shape[0]
+            self.image_shape = h5f['images'].shape[1:]
+            self.n_classes = h5f.attrs['num_classes']
+            self.split = h5f.attrs['split']
+            self.class_names = [
+                name.decode('utf-8') for name in h5f['class_names'][:]
+            ]
 
-        # Single pass through CSV - much faster
-        with open(csv_path, newline='') as csvfile:
+        print(f'[CLIPDataset] Loaded HDF5 from {h5_path}')
+        print(f'  Split: {self.split}')
+        print(f'  Images: {self.n_images}')
+        print(f'  Classes: {self.n_classes}')
+        print(f'  Image shape: {self.image_shape}')
+
+        # Load CLIP embeddings from CSV
+        self.clip_embeddings = []
+        print(f'[CLIPDataset] Loading CLIP embeddings from {clip_csv_path}')
+
+        with open(clip_csv_path, 'r') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             for row in reader:
-                self.img_paths.append(row[0])
+                # Parse embedding (skip first column which is path)
+                embedding = [float(x) for x in row[1:]]
+                self.clip_embeddings.append(embedding)
 
-                if preprocessed_clip:
-                    # Parse embedding directly as list of floats
-                    label = [float(x) for x in row[1:]]
-                    self.labels_list.append(label)
+        # Convert to tensor for fast access
+        self.clip_embeddings = torch.tensor(self.clip_embeddings,
+                                            dtype=torch.float32,
+                                            device=device)
 
-        # Convert labels to contiguous tensor on target device for fast indexing
-        if preprocessed_clip:
-            self.labels = torch.tensor(self.labels_list,
-                                       dtype=torch.float32,
-                                       device=device)
-            del self.labels_list  # Free memory
+        print(f'  Loaded {len(self.clip_embeddings)} CLIP embeddings')
+
+        if len(self.clip_embeddings) != self.n_images:
+            print(
+                f'  WARNING: Number of embeddings ({len(self.clip_embeddings)}) '
+                f'!= number of images ({self.n_images})')
+            print(
+                f'  Using minimum: {min(len(self.clip_embeddings), self.n_images)}'
+            )
+            self.n_images = min(len(self.clip_embeddings), self.n_images)
+
+        # Each worker needs its own file handle
+        self.h5_file = None
+
+    def _get_h5_file(self):
+        """Get or create HDF5 file handle for this worker."""
+        if self.h5_file is None:
+            self.h5_file = h5py.File(self.h5_path, 'r')
+        return self.h5_file
 
     def __getitem__(self, idx: int):
-        # Load image on-the-fly (lazy loading)
-        img_path = self.img_paths[idx]
-        img = Image.open(img_path).convert('RGB')
+        # Get HDF5 file handle
+        h5f = self._get_h5_file()
 
-        # Apply transforms
+        # Load image from HDF5 (uint8 [H, W, C])
+        img_array = h5f['images'][idx]
+
+        # Convert to float tensor and normalize to [-1, 1]
+        img = torch.from_numpy(img_array).float() / 255.0
+        img = img.permute(2, 0, 1)  # [H, W, C] -> [C, H, W]
+        img = (img * 2) - 1  # [0, 1] -> [-1, 1]
+
+        # Apply additional transforms if provided
         if self.img_transforms is not None:
             img = self.img_transforms(img)
 
@@ -77,19 +110,15 @@ class CLIPDataset(Dataset):
         if self.random_transforms is not None:
             img = self.random_transforms(img)
 
-        if self.preprocessed_clip:
-            label = self.labels[idx]
-        else:
-            if self.clip_model is None or self.clip_preprocess is None:
-                raise ValueError(
-                    'clip_model and clip_preprocess must be provided when '
-                    'preprocessed_clip=False')
-            batch_img = img[None, :, :, :]
-            encoded_imgs = self.clip_model.encode_image(
-                self.clip_preprocess(batch_img))
-            label = encoded_imgs.to(self.device).float()[0]
+        # Get CLIP embedding
+        label = self.clip_embeddings[idx]
 
         return img, label
 
     def __len__(self) -> int:
-        return len(self.img_paths)
+        return self.n_images
+
+    def __del__(self):
+        """Close HDF5 file when dataset is deleted."""
+        if self.h5_file is not None:
+            self.h5_file.close()

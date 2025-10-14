@@ -1,11 +1,11 @@
 # Configuration for a small/fast CLIP-conditioned DDPM model
 
 # Model identification
-model_name: "test_ddpm_small"
+model_name: "test_ddpm_small_2"
 
 # Model parameters
 model:
-  img_size: 32
+  img_size: 128
   img_channels: 3
   down_channels: [128, 256, 512]  # Smaller architecture - faster training
   t_embed_dim: 8
@@ -38,14 +38,11 @@ training:
 
 # Data parameters
 data:
-  dataset_root: "/projects/prjs1711/XAI4SFM/ImageNet1k_resized"
-  dataset_type: "imagenet1k"  # Options: 'tinyimagenet', 'imagenet1k', or custom (see train.py)
-  use_train: true
-  use_val: false
-  max_samples: 50000  # Use fewer samples for faster training
-  preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
+  # HDF5 dataset file (created with scripts/images_to_hdf5.py)
+  h5_path: "/projects/prjs1711/XAI4SFM/test_images.h5"
+
+  # CLIP embeddings CSV file
   clip_csv_path: "clip.csv"
-  random_seed: 42  # For reproducibility
 
 # CLIP parameters
 clip:
