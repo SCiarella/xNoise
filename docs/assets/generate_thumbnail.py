@@ -121,7 +121,7 @@ def create_thumbnail(output_path='thumbnail.png', dpi=300):
                 facecolor='black',
                 edgecolor='none',
                 pad_inches=0)
-    print(f"✓ Thumbnail saved to: {output_path}")
+    print(f'✓ Thumbnail saved to: {output_path}')
     plt.close()
 
 

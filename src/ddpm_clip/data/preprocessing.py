@@ -38,17 +38,17 @@ def extract_clip_embeddings(image_paths: List[str],
     existing_paths = set()
     if skip_existing and os.path.exists(csv_path):
         if verbose:
-            print(f"Found existing CSV file: {csv_path}")
+            print(f'Found existing CSV file: {csv_path}')
         with open(csv_path, 'r', newline='') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             for row in reader:
                 if row:
                     existing_paths.add(row[0])
         if verbose:
-            print(f"Found {len(existing_paths)} already processed images")
+            print(f'Found {len(existing_paths)} already processed images')
     else:
         if verbose:
-            print(f"Creating new CSV file: {csv_path}")
+            print(f'Creating new CSV file: {csv_path}')
 
     # Filter out already processed paths
     if skip_existing:
@@ -56,12 +56,12 @@ def extract_clip_embeddings(image_paths: List[str],
             path for path in image_paths if path not in existing_paths
         ]
         if verbose:
-            print(f"Processing {len(remaining_paths)} new images "
-                  f"(skipping {len(existing_paths)} already done)")
+            print(f'Processing {len(remaining_paths)} new images '
+                  f'(skipping {len(existing_paths)} already done)')
     else:
         remaining_paths = image_paths
         if verbose:
-            print(f"Processing {len(remaining_paths)} images")
+            print(f'Processing {len(remaining_paths)} images')
 
     if len(remaining_paths) == 0:
         if verbose:
@@ -88,7 +88,7 @@ def extract_clip_embeddings(image_paths: List[str],
                 valid_paths.append(path)
             except Exception as e:
                 if verbose:
-                    print(f"Error processing {path}: {e}")
+                    print(f'Error processing {path}: {e}')
                 continue
 
         # Encode batch if any valid images
@@ -113,13 +113,13 @@ def extract_clip_embeddings(image_paths: List[str],
             remaining_time = (len(remaining_paths) -
                               batch_end) / rate if rate > 0 else 0
             print(
-                f"Processed {batch_end}/{len(remaining_paths)} new images... "
-                f"Rate: {rate:.1f} imgs/sec, ETA: {remaining_time:.0f}s")
+                f'Processed {batch_end}/{len(remaining_paths)} new images... '
+                f'Rate: {rate:.1f} imgs/sec, ETA: {remaining_time:.0f}s')
 
     # Write results to CSV
     if all_rows:
         if verbose:
-            print(f"Appending {len(all_rows)} new entries to CSV...")
+            print(f'Appending {len(all_rows)} new entries to CSV...')
 
         mode = 'a' if os.path.exists(csv_path) else 'w'
         with open(csv_path, mode, newline='') as csvfile:
@@ -129,12 +129,12 @@ def extract_clip_embeddings(image_paths: List[str],
         total_time = time.time() - start_time
         if verbose:
             print(
-                f"Completed! Processed {len(all_rows)} new images in {total_time:.1f}s"
+                f'Completed! Processed {len(all_rows)} new images in {total_time:.1f}s'
             )
             print(
-                f"Average rate: {len(all_rows)/total_time:.1f} images/second")
+                f'Average rate: {len(all_rows)/total_time:.1f} images/second')
             print(
-                f"Total images in dataset: {len(existing_paths) + len(all_rows)}"
+                f'Total images in dataset: {len(existing_paths) + len(all_rows)}'
             )
 
         return len(all_rows), total_time

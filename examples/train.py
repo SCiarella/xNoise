@@ -27,6 +27,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.cuda.amp import autocast, GradScaler
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
 import matplotlib
@@ -66,21 +67,55 @@ def parse_args():
     return parser.parse_args()
 
 
+def collect_image_paths(dataset_root, dataset_type='imagenet1k'):
+    """
+    Collect image paths based on dataset type.
+    
+    Args:
+        dataset_root: Root directory of the dataset
+        dataset_type: Type of dataset ('tinyimagenet' or 'imagenet1k')
+    
+    Returns:
+        List of image paths
+    """
+    if dataset_type == 'tinyimagenet':
+        data_paths = glob.glob(f"{dataset_root}/train/*/images/*.JPEG")
+    elif dataset_type == 'imagenet1k':
+        data_paths = glob.glob(f"{dataset_root}/train/*/*.jpg")
+    else:
+        raise ValueError(f"Unknown dataset type: {dataset_type}. Use 'tinyimagenet' or 'imagenet1k'")
+    
+    return data_paths
+
+
 def prepare_dataset(config, device, skip_extraction=False):
-    """Prepare dataset and extract CLIP embeddings if needed."""
+    """
+    Prepare dataset and extract CLIP embeddings if needed.
+    
+    Args:
+        config: Configuration object containing dataset parameters
+        device: Device to run CLIP extraction on
+        skip_extraction: Skip CLIP embedding extraction if True
+    
+    Returns:
+        Path to the CSV file containing CLIP embeddings
+    """
     import clip
     
-    # Collect image paths
+    # Get dataset configuration
     dataset_root = config['data']['dataset_root']
-    train_paths = glob.glob(f"{dataset_root}/train/*/images/*.JPEG")
-    val_paths = glob.glob(f"{dataset_root}/val/images/*.JPEG")
-    data_paths = train_paths
-    
+    dataset_type = config['data'].get('dataset_type', 'imagenet1k')
     ndata = config['data']['max_samples']
+    random_seed = config['data']['random_seed']
+    
+    print(f"\nPreparing dataset: {dataset_type}")
+    print(f"Dataset root: {dataset_root}")
+    
+    # Collect image paths based on dataset type
+    data_paths = collect_image_paths(dataset_root, dataset_type)
     print(f"Found {len(data_paths)} total images")
     
     # Shuffle and limit dataset size
-    random_seed = config['data']['random_seed']
     random.seed(random_seed)
     random.shuffle(data_paths)
     data_paths = data_paths[:ndata]
@@ -151,14 +186,20 @@ def create_dataloaders(config, csv_path, device):
         random_transforms=random_transforms,
         clip_features=CLIP_FEATURES,
         preprocessed_clip=config['data']['preprocessed_clip'],
-        device=device
+        device='cpu'  # Keep data on CPU for efficient DataLoader
     )
+
+    print(f" Clip dataset created with {len(train_data)} samples")
     
     dataloader = DataLoader(
         train_data,
         batch_size=BATCH_SIZE,
         shuffle=True,
-        drop_last=True
+        drop_last=True,
+        num_workers=4,
+        pin_memory=True,  # pins CPU memory for faster GPU transfer
+        persistent_workers=True,
+        prefetch_factor=2  # Prefetch 2 batches per worker
     )
     
     print(f"  Dataset size: {len(train_data)} images")
@@ -221,6 +262,9 @@ def setup_training(config, model, device):
         eta_min=config['training']['lr_scheduler']['eta_min']
     )
     
+    # Mixed precision scaler
+    scaler = GradScaler()
+    
     # EMA
     ema_enabled = config['training']['ema']['enabled']
     if ema_enabled:
@@ -235,13 +279,14 @@ def setup_training(config, model, device):
     print(f"  Epochs: {epochs}")
     print(f"  Learning rate: {lrate}")
     print(f"  LR scheduler: CosineAnnealingLR (eta_min={config['training']['lr_scheduler']['eta_min']})")
+    print(f"  Mixed precision: Enabled (FP16)")
     print(f"  Conditioning drop probability: {config['training']['c_drop_prob']}")
     print(f"  Save frequency: every {config['training']['save_frequency']} epochs")
     
     delete_old = config['training'].get('delete_old_checkpoints', False)
     print(f"  Delete old checkpoints: {delete_old}")
     
-    return optimizer, scheduler, ema, epochs
+    return optimizer, scheduler, ema, epochs, scaler
 
 
 def train(config, args):
@@ -264,7 +309,7 @@ def train(config, args):
     ddpm, model, model_compiled, T = initialize_model(config, device)
     
     # Setup training
-    optimizer, scheduler, ema, epochs = setup_training(config, model, device)
+    optimizer, scheduler, ema, epochs, scaler = setup_training(config, model, device)
     
     # Automatically load checkpoint if one exists
     start_epoch, loss_history = load_checkpoint(config, model, optimizer, scheduler, ema)
@@ -290,26 +335,29 @@ def train(config, args):
     for epoch in range(start_epoch, epochs):
         epoch_start_time = time.time()
         
-        gc.collect()
-        torch.cuda.empty_cache()
-        
         # Track average loss per epoch
-        epoch_losses = []
+        epoch_loss = 0.0
         
         for step, batch in enumerate(dataloader):
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             t = torch.randint(0, T, (BATCH_SIZE,), device=device).float()
             x, c = batch
+            x, c = x.to(device, non_blocking=True), c.to(device, non_blocking=True)
             c_mask = ddpm.get_context_mask(c, c_drop_prob)
-            loss = ddpm.get_loss(model_compiled, x, t, c, c_mask)
-            loss.backward()
-            optimizer.step()
+            
+            # Mixed precision training
+            with autocast():
+                loss = ddpm.get_loss(model_compiled, x, t, c, c_mask)
+            
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             
             # Update EMA after each step
             if ema is not None:
                 ema.update()
             
-            epoch_losses.append(loss.item())
+            epoch_loss += loss.detach()
         
         # Step the learning rate scheduler
         scheduler.step()
@@ -319,7 +367,7 @@ def train(config, args):
         epoch_times.append(epoch_time)
         avg_epoch_time = np.mean(epoch_times)
         
-        avg_loss = np.mean(epoch_losses)
+        avg_loss = (epoch_loss / len(dataloader)).item()
         loss_history.append(avg_loss)
         current_lr = optimizer.param_groups[0]['lr']
         

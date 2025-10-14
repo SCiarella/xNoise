@@ -28,8 +28,8 @@ def setup_device():
     if device.type != 'cuda':
         raise RuntimeError(
             'CUDA not available. This script requires GPU support.')
-    print(f"Using device: {device}")
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f'Using device: {device}')
+    print(f'GPU: {torch.cuda.get_device_name(0)}')
     return device
 
 
@@ -52,7 +52,7 @@ def load_clip_model(device):
     clip_model, clip_preprocess = clip.load('ViT-B/32', device=device)
     clip_model.eval()
     CLIP_FEATURES = 512
-    print(f"CLIP model loaded with {CLIP_FEATURES} features")
+    print(f'CLIP model loaded with {CLIP_FEATURES} features')
 
     return clip_model, clip_preprocess, CLIP_FEATURES
 
@@ -83,9 +83,9 @@ def load_checkpoint(config, model, optimizer=None, scheduler=None, ema=None):
             latest_epoch = max(
                 [int(f.split('.')[0]) for f in checkpoint_files])
             latest_checkpoint = os.path.join(checkpoint_path,
-                                             f"{latest_epoch}.pth")
+                                             f'{latest_epoch}.pth')
 
-            print(f"\nFound checkpoint: {latest_checkpoint}")
+            print(f'\nFound checkpoint: {latest_checkpoint}')
             print('Automatically resuming training...')
             checkpoint = torch.load(latest_checkpoint,
                                     map_location='cuda',
@@ -107,10 +107,10 @@ def load_checkpoint(config, model, optimizer=None, scheduler=None, ema=None):
             if 'loss_history' in checkpoint:
                 loss_history = checkpoint['loss_history']
                 print(
-                    f"Resumed from epoch {start_epoch} with {len(loss_history)} loss values"
+                    f'Resumed from epoch {start_epoch} with {len(loss_history)} loss values'
                 )
             else:
-                print(f"Resumed from epoch {start_epoch}")
+                print(f'Resumed from epoch {start_epoch}')
     else:
         print('\nNo checkpoint found - starting fresh training')
 
@@ -148,9 +148,9 @@ def delete_old_checkpoints(checkpoint_path,
                     checkpoint_file = os.path.join(checkpoint_path, f)
                     try:
                         os.remove(checkpoint_file)
-                        print(f"  → Deleted old checkpoint: {f}")
+                        print(f'  → Deleted old checkpoint: {f}')
                     except Exception as e:
-                        print(f"  → Warning: Could not delete {f}: {e}")
+                        print(f'  → Warning: Could not delete {f}: {e}')
         else:
             # Keep only the latest checkpoint
             latest_epoch = max(
@@ -161,18 +161,18 @@ def delete_old_checkpoints(checkpoint_path,
                     checkpoint_file = os.path.join(checkpoint_path, f)
                     try:
                         os.remove(checkpoint_file)
-                        print(f"  → Deleted old checkpoint: {f}")
+                        print(f'  → Deleted old checkpoint: {f}')
                     except Exception as e:
-                        print(f"  → Warning: Could not delete {f}: {e}")
+                        print(f'  → Warning: Could not delete {f}: {e}')
     else:
         # Delete all checkpoints
         for f in checkpoint_files:
             checkpoint_file = os.path.join(checkpoint_path, f)
             try:
                 os.remove(checkpoint_file)
-                print(f"  → Deleted checkpoint: {f}")
+                print(f'  → Deleted checkpoint: {f}')
             except Exception as e:
-                print(f"  → Warning: Could not delete {f}: {e}")
+                print(f'  → Warning: Could not delete {f}: {e}')
 
 
 def plot_loss_curve(loss_history, save_dir):
@@ -209,7 +209,7 @@ def plot_loss_curve(loss_history, save_dir):
     plt.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/loss_curve.png", dpi=150, bbox_inches='tight')
+    plt.savefig(f'{save_dir}/loss_curve.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-    print(f"  Loss curve saved to: {save_dir}/loss_curve.png")
+    print(f'  Loss curve saved to: {save_dir}/loss_curve.png')

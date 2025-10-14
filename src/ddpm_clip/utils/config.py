@@ -66,8 +66,8 @@ class Config:
         os.makedirs(self.save_dir, exist_ok=True)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         print(f"Created directories for model '{self.model_name}':")
-        print(f"  Save dir: {self.save_dir}")
-        print(f"  Checkpoint dir: {self.checkpoint_dir}")
+        print(f'  Save dir: {self.save_dir}')
+        print(f'  Checkpoint dir: {self.checkpoint_dir}')
 
 
 def load_config(config_path: str) -> Config:
@@ -88,7 +88,7 @@ def load_config(config_path: str) -> Config:
     config_path_obj = Path(config_path)
 
     if not config_path_obj.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+        raise FileNotFoundError(f'Config file not found: {config_path}')
 
     with open(config_path_obj, 'r') as f:
         config_dict = yaml.safe_load(f)
@@ -113,4 +113,4 @@ def save_config(config: Config, save_path: str):
                   default_flow_style=False,
                   sort_keys=False)
 
-    print(f"Configuration saved to: {save_path}")
+    print(f'Configuration saved to: {save_path}')

@@ -1,0 +1,66 @@
+# Configuration for a small/fast CLIP-conditioned DDPM model
+
+# Model identification
+model_name: "test_ddpm_small"
+
+# Model parameters
+model:
+  img_size: 32
+  img_channels: 3
+  down_channels: [128, 256, 512]  # Smaller architecture - faster training
+  t_embed_dim: 8
+  c_embed_dim: 512  # CLIP embedding size (fixed)
+
+# Diffusion parameters
+diffusion:
+  timesteps: 300  # Fewer timesteps for faster sampling
+  beta_start: 0.0001
+  beta_end: 0.02
+
+# Training parameters
+training:
+  epochs: 100  # Fewer epochs for quick experiments
+  batch_size: 128  # Larger batch size possible with smaller model
+  learning_rate: 0.0002  # Higher LR for faster convergence
+  c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
+  save_frequency: 10  # Save checkpoint every N epochs
+  delete_old_checkpoints: true  # Delete old checkpoints to save disk space
+
+  # Learning rate scheduler
+  lr_scheduler:
+    type: "cosine"  # CosineAnnealingLR
+    eta_min: 0.000002  # Minimum learning rate
+
+  # EMA (Exponential Moving Average)
+  ema:
+    enabled: true
+    decay: 0.999  # Less smoothing for faster adaptation with small model
+
+# Data parameters
+data:
+  dataset_root: "/projects/prjs1711/XAI4SFM/ImageNet1k_resized"
+  dataset_type: "imagenet1k"  # Options: 'tinyimagenet', 'imagenet1k', or custom (see train.py)
+  use_train: true
+  use_val: false
+  max_samples: 50000  # Use fewer samples for faster training
+  preprocessed_clip: true  # Use preprocessed CLIP embeddings from CSV
+  clip_csv_path: "clip.csv"
+  random_seed: 42  # For reproducibility
+
+# CLIP parameters
+clip:
+  model_name: "ViT-B/32"
+  features: 512
+
+# Generation parameters
+generation:
+  text_prompts: ["goldfish swimming", "oak tree in forest", "beautiful sunset"]
+  guidance_weights: [-1, 0, 1, 2]  # w values for classifier-free guidance
+
+# Paths (will be modified by model_name)
+paths:
+  save_dir: "../images/"
+  checkpoint_dir: "../model_checkpoint/"
+
+# Device
+device: "cuda"  # or "cpu"

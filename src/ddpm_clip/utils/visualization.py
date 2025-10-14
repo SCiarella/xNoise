@@ -64,7 +64,7 @@ def save_animation(xs, gif_name, interval=300, repeat_delay=5000):
                        append_images=images[1:],
                        duration=interval,
                        loop=0)
-        print(f"Animation saved to: {gif_name}")
+        print(f'Animation saved to: {gif_name}')
 
 
 def generation_image(image_list, text_list=None, w=None, save_path=None):
@@ -144,7 +144,7 @@ def generation_image(image_list, text_list=None, w=None, save_path=None):
             # Save if path provided
             if save_path is not None:
                 plt.savefig(save_path, dpi=150, bbox_inches='tight')
-                print(f"Figure saved to: {save_path}")
+                print(f'Figure saved to: {save_path}')
 
             plt.close(fig)
             return fig
@@ -209,7 +209,7 @@ def generation_image(image_list, text_list=None, w=None, save_path=None):
             # Save if path provided
             if save_path is not None:
                 plt.savefig(save_path, dpi=150, bbox_inches='tight')
-                print(f"Figure saved to: {save_path}")
+                print(f'Figure saved to: {save_path}')
 
             plt.close(fig)
             return fig
@@ -222,7 +222,7 @@ def generation_image(image_list, text_list=None, w=None, save_path=None):
         # Save if path provided
         if save_path is not None:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            print(f"Figure saved to: {save_path}")
+            print(f'Figure saved to: {save_path}')
 
         plt.close(fig)
         return fig

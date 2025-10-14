@@ -6,22 +6,24 @@ import csv
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
-from typing import Optional, Callable, Any, Union
+from typing import Optional, Callable, Any
 
 
 class CLIPDataset(Dataset):
     """
     PyTorch Dataset for images with precomputed CLIP embeddings.
 
+    Efficient version: loads images on-the-fly instead of preloading all into memory.
+
     Args:
         csv_path: Path to CSV file containing image paths and CLIP embeddings
-        img_transforms: Transforms to apply to images before storing
+        img_transforms: Transforms to apply to images when loading
         random_transforms: Random augmentation transforms to apply on __getitem__
         clip_features: Dimension of CLIP embeddings (default: 512)
         preprocessed_clip: Whether CLIP embeddings are preprocessed in CSV
         clip_model: CLIP model for on-the-fly encoding (required if preprocessed_clip=False)
         clip_preprocess: CLIP preprocessing (required if preprocessed_clip=False)
-        device: Device to load tensors onto
+        device: Device to load tensors onto (use 'cpu' for multi-worker DataLoader)
     """
 
     def __init__(self,
@@ -32,50 +34,46 @@ class CLIPDataset(Dataset):
                  preprocessed_clip: bool = True,
                  clip_model: Optional[Any] = None,
                  clip_preprocess: Optional[Callable] = None,
-                 device: str = 'cuda'):
-        self.imgs = []
-        self.preprocessed_clip = preprocessed_clip
+                 device: str = 'cpu'):
+        self.img_transforms = img_transforms
         self.random_transforms = random_transforms
+        self.preprocessed_clip = preprocessed_clip
         self.clip_model = clip_model
         self.clip_preprocess = clip_preprocess
         self.device = device
 
-        # Count rows first to preallocate labels tensor
-        with open(csv_path, newline='') as csvfile:
-            num_rows = sum(1 for _ in csv.reader(csvfile))
+        # Store image paths instead of loaded images
+        self.img_paths = []
+        self.labels_list = []
 
-        if preprocessed_clip:
-            self.labels = torch.empty(num_rows,
-                                      clip_features,
-                                      dtype=torch.float,
-                                      device=device)
-
-        # Load data
+        # Single pass through CSV - much faster
         with open(csv_path, newline='') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
-            for idx, row in enumerate(reader):
-                img_path = row[0]
-                img: Union[Image.Image,
-                           torch.Tensor] = Image.open(img_path).convert('RGB')
-
-                if img_transforms is not None:
-                    img = img_transforms(img)
-
-                # img_transforms should convert PIL Image to Tensor
-                if isinstance(img, torch.Tensor):
-                    self.imgs.append(img.to(device))
-                else:
-                    raise TypeError(
-                        f"img_transforms must convert PIL Image to Tensor, got {type(img)}"
-                    )
+            for row in reader:
+                self.img_paths.append(row[0])
 
                 if preprocessed_clip:
+                    # Parse embedding directly as list of floats
                     label = [float(x) for x in row[1:]]
-                    self.labels[idx, :] = torch.FloatTensor(label).to(device)
+                    self.labels_list.append(label)
+
+        # Convert labels to contiguous tensor on target device for fast indexing
+        if preprocessed_clip:
+            self.labels = torch.tensor(self.labels_list,
+                                       dtype=torch.float32,
+                                       device=device)
+            del self.labels_list  # Free memory
 
     def __getitem__(self, idx: int):
-        img = self.imgs[idx]
+        # Load image on-the-fly (lazy loading)
+        img_path = self.img_paths[idx]
+        img = Image.open(img_path).convert('RGB')
 
+        # Apply transforms
+        if self.img_transforms is not None:
+            img = self.img_transforms(img)
+
+        # Apply random augmentations
         if self.random_transforms is not None:
             img = self.random_transforms(img)
 
@@ -94,4 +92,4 @@ class CLIPDataset(Dataset):
         return img, label
 
     def __len__(self) -> int:
-        return len(self.imgs)
+        return len(self.img_paths)

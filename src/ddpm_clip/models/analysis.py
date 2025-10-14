@@ -80,7 +80,7 @@ def visualize_diffusion_process(ddpm,
     elif vocabulary == 'openai_imagenet':
         labels = _get_openai_imagenet_labels()
     else:
-        raise ValueError(f"Unknown vocabulary: {vocabulary}")
+        raise ValueError(f'Unknown vocabulary: {vocabulary}')
 
     if timesteps_to_show is None:
         # Show 8 evenly spaced timesteps from 0 to T-1 (clean to noisy)
@@ -163,7 +163,7 @@ def visualize_diffusion_process(ddpm,
             for i in range(top_k):
                 label = labels[top_image_indices[i].item()]
                 score = top_image_values[i].item()
-                image_matches.append(f"{label}: {score:.2f}")
+                image_matches.append(f'{label}: {score:.2f}')
             image_text = '\n'.join(image_matches)
 
             axes[idx, 1].text(0.5,
@@ -212,7 +212,7 @@ def visualize_diffusion_process(ddpm,
             for i in range(top_k):
                 label = labels[top_noise_indices[i].item()]
                 score = top_noise_values[i].item()
-                noise_matches.append(f"{label}: {score:.2f}")
+                noise_matches.append(f'{label}: {score:.2f}')
             noise_text = '\n'.join(noise_matches)
 
             axes[idx, 3].text(0.5,
@@ -265,7 +265,7 @@ def visualize_diffusion_process(ddpm,
             for i in range(top_k):
                 label = labels[top_uncond_noise_indices[i].item()]
                 score = top_uncond_noise_values[i].item()
-                uncond_noise_matches.append(f"{label}: {score:.2f}")
+                uncond_noise_matches.append(f'{label}: {score:.2f}')
             uncond_noise_text = '\n'.join(uncond_noise_matches)
 
             axes[idx, 5].text(0.5,
@@ -319,7 +319,7 @@ def visualize_diffusion_process(ddpm,
             for i in range(top_k):
                 label = labels[top_diff_indices[i].item()]
                 score = top_diff_values[i].item()
-                diff_matches.append(f"{label}: {score:.2f}")
+                diff_matches.append(f'{label}: {score:.2f}')
             diff_text = '\n'.join(diff_matches)
 
             axes[idx, 7].text(0.5,
@@ -710,7 +710,7 @@ def plot_diffusion_metrics(metrics,
 
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Metrics plot saved to: {save_path}")
+        print(f'Metrics plot saved to: {save_path}')
     else:
         plt.show()
 
@@ -957,7 +957,7 @@ def plot_prompt_alignment(results,
 
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Prompt alignment plot saved to: {save_path}")
+        print(f'Prompt alignment plot saved to: {save_path}')
     else:
         plt.show()
 

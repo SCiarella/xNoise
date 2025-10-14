@@ -39,6 +39,7 @@ training:
 # Data parameters
 data:
   dataset_root: "../data/tiny-imagenet-200"
+  dataset_type: "tinyimagenet"  # Options: 'tinyimagenet', 'imagenet1k', or custom (see train.py)
   use_train: true
   use_val: false
   max_samples: 50000  # Use fewer samples for faster training
