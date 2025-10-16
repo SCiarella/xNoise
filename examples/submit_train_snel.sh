@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #SBATCH --job-name=clip_diffusion_v2
 #SBATCH --output=logs/clip_diffusion_v2_%j.out
 #SBATCH --error=logs/clip_diffusion_v2_%j.err

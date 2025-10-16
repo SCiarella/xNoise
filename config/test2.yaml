@@ -1,0 +1,68 @@
+# Configuration for a small/fast CLIP-conditioned DDPM model
+
+# Model identification
+model_name: "test_ddpm_small_2"
+
+# Model parameters
+model:
+  img_size: 128
+  img_channels: 3
+  down_channels: [256, 512, 512]
+  t_embed_dim: 16
+  c_embed_dim: 512  # CLIP embedding size (fixed)
+
+# Diffusion parameters
+diffusion:
+  timesteps: 400
+  beta_start: 0.0001
+  beta_end: 0.02
+
+# Training parameters
+training:
+  epochs: 200  # Fewer epochs for quick experiments
+  batch_size: 128  # Larger batch size possible with smaller model
+  learning_rate: 0.00002  # REDUCED from 0.0001 to prevent gradient explosion
+  c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
+  save_frequency: 10  # Save checkpoint every N epochs
+  delete_old_checkpoints: true  # Delete old checkpoints to save disk space
+
+  # Learning rate scheduler
+  lr_scheduler:
+    type: "cosine"  # CosineAnnealingLR
+    eta_min: 0.000001  # Minimum learning rate (reduced proportionally)
+
+  # EMA (Exponential Moving Average)
+  ema:
+    enabled: true
+    decay: 0.999  # Less smoothing for faster adaptation with small model
+
+  # Gradient clipping
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0  # Maximum gradient norm
+
+# Data parameters
+data:
+  # HDF5 dataset file (created with scripts/images_to_hdf5.py)
+  h5_path: "/projects/prjs1711/XAI4SFM/test_images.h5"
+
+  # CLIP embeddings CSV file
+  clip_csv_path: "clip.csv"
+
+# CLIP parameters
+clip:
+  model_name: "ViT-B/32"
+  features: 512
+
+# Generation parameters
+generation:
+  text_prompts: ["goldfish swimming", "oak tree in forest", "beautiful sunset"]
+  guidance_weights: [-1, 0, 1, 2]  # w values for classifier-free guidance
+
+# Paths (will be modified by model_name)
+paths:
+  save_dir: "../images/"
+  checkpoint_dir: "/scratch-shared/sciarella/model_checkpoint/"
+
+# Device
+device: "cuda"  # or "cpu"

@@ -1,27 +1,27 @@
 # Configuration for a small/fast CLIP-conditioned DDPM model
 
 # Model identification
-model_name: "test_ddpm_small_2"
+model_name: "test_ddpm_small"
 
 # Model parameters
 model:
   img_size: 128
   img_channels: 3
-  down_channels: [128, 256, 512]  # Smaller architecture - faster training
-  t_embed_dim: 8
+  down_channels: [512, 512, 1024]
+  t_embed_dim: 12
   c_embed_dim: 512  # CLIP embedding size (fixed)
 
 # Diffusion parameters
 diffusion:
-  timesteps: 300  # Fewer timesteps for faster sampling
+  timesteps: 500
   beta_start: 0.0001
   beta_end: 0.02
 
 # Training parameters
 training:
-  epochs: 100  # Fewer epochs for quick experiments
-  batch_size: 128  # Larger batch size possible with smaller model
-  learning_rate: 0.0002  # Higher LR for faster convergence
+  epochs: 200  # Fewer epochs for quick experiments
+  batch_size: 64  # Larger batch size possible with smaller model
+  learning_rate: 0.0005  # Higher LR for faster convergence
   c_drop_prob: 0.1  # Probability of dropping context (for classifier-free guidance)
   save_frequency: 10  # Save checkpoint every N epochs
   delete_old_checkpoints: true  # Delete old checkpoints to save disk space
@@ -35,6 +35,11 @@ training:
   ema:
     enabled: true
     decay: 0.999  # Less smoothing for faster adaptation with small model
+
+  # Gradient clipping (prevents NaN and gradient explosion)
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0  # Maximum gradient norm
 
 # Data parameters
 data:

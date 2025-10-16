@@ -36,6 +36,11 @@ training:
     enabled: true
     decay: 0.9995  # Slightly less smoothing for faster adaptation
 
+  # Gradient clipping (prevents NaN and gradient explosion)
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0  # Maximum gradient norm
+
 # Data parameters
 data:
   dataset_root: "../data/tiny-imagenet-200"

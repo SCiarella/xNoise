@@ -36,6 +36,11 @@ training:
     enabled: true
     decay: 0.999  # Less smoothing for faster adaptation with small model
 
+  # Gradient clipping (prevents NaN and gradient explosion)
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0  # Maximum gradient norm
+
 # Data parameters
 data:
   # HDF5 dataset file (created with scripts/images_to_hdf5.py)

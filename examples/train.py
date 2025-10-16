@@ -356,7 +356,15 @@ def train(config, args):
             with autocast():
                 loss = ddpm.get_loss(model_compiled, x, t, c, c_mask)
             
+            # Backward pass
             scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)  # Unscale before clipping
+            
+            # Gradient clipping (if enabled)
+            if config['training'].get('gradient_clip', {}).get('enabled', False):
+                max_norm = config['training']['gradient_clip'].get('max_norm', 1.0)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
+            
             scaler.step(optimizer)
             scaler.update()
             

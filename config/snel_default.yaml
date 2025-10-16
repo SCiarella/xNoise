@@ -36,6 +36,11 @@ training:
     enabled: true
     decay: 0.9999
 
+  # Gradient clipping (prevents NaN and gradient explosion)
+  gradient_clip:
+    enabled: true
+    max_norm: 1.0  # Maximum gradient norm
+
 # Data parameters
 data:
   dataset_root: "/projects/prjs1711/XAI4SFM/ImageNet1k_resized"
